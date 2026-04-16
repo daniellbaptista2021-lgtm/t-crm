@@ -1,0 +1,10 @@
+[
+  {
+    "id": "1",
+    "name": "Supervisor",
+    "email": "supervisor@pvcorretor.com",
+    "password": "$2a$10$ZBtT3sgpUX45IcHgJeASz.tTauUnpmZ/mbK15JJN3uwYZ0olWXRVy",
+    "role": "supervisor",
+    "createdAt": "2026-04-16T02:04:38.798Z"
+  }
+]

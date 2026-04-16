@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>T-CRM — PV Corretora</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Chart.js para o Dashboard -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563eb'/><text y='22' x='6' font-size='18' font-family='sans-serif' fill='white' font-weight='bold'>T</text></svg>">
+</head>
+<body class="light">
+
+<!-- ══════════════════════════════════════════════
+     LOGIN PAGE
+══════════════════════════════════════════════ -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">T</div>
+      <span class="login-logo-name">T-CRM</span>
+    </div>
+    <div class="login-title">Bem-vindo de volta!</div>
+    <div class="login-sub">Entre com suas credenciais para acessar o sistema da PV Corretora.</div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="seu@email.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" id="login-btn">
+      <span id="login-btn-text">Entrar</span>
+    </button>
+    <div id="login-error"></div>
+    <div class="login-footer">PV Corretora · Uso interno · T-CRM v4</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- HEADER -->
+  <header id="header">
+    <div class="logo-wrap">
+      <div class="logo-icon">T</div>
+      <span class="logo-name">T-CRM</span>
+      <span class="logo-tag">v4</span>
+    </div>
+
+    <!-- Search -->
+    <div id="gs-wrap">
+      <span class="gs-icon">🔍</span>
+      <input id="global-search" type="text" placeholder="Buscar clientes por nome ou telefone..." autocomplete="off">
+      <button id="gs-clear" title="Limpar">✕</button>
+      <div id="search-results"></div>
+    </div>
+
+    <!-- Dashboard Button (ao lado da busca) -->
+    <button id="dash-open-btn" title="Abrir Dashboard" class="hd-btn hd-btn-primary">
+      📊 Dashboard
+    </button>
+
+    <!-- Right section -->
+    <div class="hd-right">
+      <div class="hd-refresh-txt">↺ <span id="refresh-label">--:--</span></div>
+      <div class="hd-user" id="hd-user">
+        <div class="hd-user-av" id="hd-user-av">?</div>
+        <div class="hd-user-info">
+          <div class="hd-user-name" id="hd-user-name">—</div>
+          <div class="hd-user-role" id="hd-user-role">—</div>
+        </div>
+      </div>
+      <button class="hd-btn" id="config-btn" style="display:none">⚙️ Config</button>
+      <button class="hd-btn" id="refresh-btn">↺</button>
+      <button class="hd-btn danger" id="logout-btn">Sair</button>
+    </div>
+  </header>
+
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <span class="tb-lbl">Vendedor</span>
+    <select id="filter-agent"><option value="">Todos</option></select>
+    <div class="tb-sep"></div>
+    <span class="tb-total" id="tb-total"></span>
+  </div>
+
+  <!-- BOARD WRAPPER -->
+  <div id="board-wrap">
+    <div id="board-loading">
+      <div class="spinner"></div>
+      Carregando conversas...
+    </div>
+    <div id="board"></div>
+
+    <!-- CHAT PANEL -->
+    <aside id="chat-panel">
+      <div id="chat-head">
+        <button id="chat-close">✕</button>
+        <div id="chat-av" class="chat-av"></div>
+        <div class="chat-head-info">
+          <div id="chat-head-name" class="chat-head-name">Contato</div>
+          <div id="chat-head-phone" class="chat-head-phone">📞 —</div>
+        </div>
+        <div style="position:relative">
+          <button id="labels-btn">🏷️ Etiquetas</button>
+          <div id="labels-dropdown">
+            <div class="ldd-title">Selecionar etiquetas</div>
+            <div class="ldd-grid" id="ldd-grid"></div>
+            <button class="ldd-apply" id="ldd-apply">Aplicar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="stage-mover">
+        <div class="stage-title">Mover para etapa</div>
+        <div id="stage-btns"></div>
+      </div>
+
+      <div id="messages-area"></div>
+
+      <!-- Audio recorder -->
+      <div id="rec-ui">
+        <div class="rec-status">
+          <div class="rec-dot"></div>
+          <span id="rec-txt">Gravando...</span>
+          <span id="rec-timer">00:00</span>
+        </div>
+        <div id="audio-preview-wrap">
+          <audio id="audio-preview" controls></audio>
+        </div>
+        <div class="rec-btns">
+          <button class="rec-btn cancel" id="rec-cancel">❌ Cancelar</button>
+          <button class="rec-btn stop"   id="rec-stop">⏹ Parar</button>
+          <button class="rec-btn send"   id="rec-send" style="display:none">📤 Enviar áudio</button>
+        </div>
+      </div>
+
+      <!-- Input area -->
+      <div id="chat-input-area">
+        <div id="fp-bar">
+          <div id="fp-thumb"></div>
+          <span id="fp-name"></span>
+          <span id="fp-size"></span>
+          <button id="fp-rm">✕</button>
+        </div>
+        <div id="input-row">
+          <button class="in-btn" id="attach-btn">📎</button>
+          <button class="in-btn" id="record-btn">🎙️</button>
+          <textarea id="msg-input" placeholder="Digite uma mensagem..." rows="1"></textarea>
+          <button id="send-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+        <input type="file" id="file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx">
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- CONFIG PANEL -->
+<div id="config-panel">
+  <div id="config-modal">
+    <div id="config-modal-head">
+      <h2>⚙️ Configurações</h2>
+      <button id="config-close">✕</button>
+    </div>
+    <div id="config-body">
+      <div class="cfg-section-title">
+        Usuários cadastrados
+        <button class="cfg-add-btn" id="cfg-add-btn">+ Novo usuário</button>
+      </div>
+      <div id="user-form">
+        <div class="uf-title" id="uf-title">Novo usuário</div>
+        <div class="uf-grid">
+          <div class="uf-field"><label>Nome</label><input id="uf-name" placeholder="Nome completo"></div>
+          <div class="uf-field"><label>Tipo</label>
+            <select id="uf-role">
+              <option value="vendedor">Vendedor</option>
+              <option value="backoffice">Backoffice</option>
+              <option value="supervisor">Supervisor</option>
+            </select>
+          </div>
+          <div class="uf-field full"><label>Email</label><input id="uf-email" type="email" placeholder="email@pvcorretor.com"></div>
+          <div class="uf-field full">
+            <label>Senha <span id="uf-pass-hint" style="font-weight:400;text-transform:none;display:none">(deixe em branco para manter)</span></label>
+            <input id="uf-pass" type="password" placeholder="Mínimo 6 caracteres">
+          </div>
+        </div>
+        <div class="uf-btns">
+          <button class="uf-btn cancel" id="uf-cancel">Cancelar</button>
+          <button class="uf-btn primary" id="uf-save">Salvar usuário</button>
+        </div>
+      </div>
+      <div id="users-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     DASHBOARD OVERLAY (Power BI style)
+══════════════════════════════════════════════ -->
+<div id="dashboard-overlay">
+  <div id="dashboard-modal">
+
+    <!-- Dashboard Header -->
+    <div id="dash-head">
+      <div class="dash-head-left">
+        <div class="dash-logo">📊</div>
+        <div>
+          <div class="dash-title">Dashboard — Performance de Leads</div>
+          <div class="dash-sub">PV Corretora · Análise em tempo real</div>
+        </div>
+      </div>
+      <div class="dash-filters">
+        <div class="dash-filter-group">
+          <label class="dash-filter-label">Vendedor</label>
+          <select id="dash-filter-agent" class="dash-select">
+            <option value="">Todos os vendedores</option>
+          </select>
+        </div>
+        <div class="dash-filter-group">
+          <label class="dash-filter-label">De</label>
+          <input type="date" id="dash-date-from" class="dash-input">
+        </div>
+        <div class="dash-filter-group">
+          <label class="dash-filter-label">Até</label>
+          <input type="date" id="dash-date-to" class="dash-input">
+        </div>
+        <button id="dash-apply-btn" class="dash-filter-btn">Aplicar</button>
+        <button id="dash-reset-btn" class="dash-filter-btn secondary">Limpar</button>
+      </div>
+      <button id="dash-close" title="Fechar">✕</button>
+    </div>
+
+    <!-- Dashboard Body -->
+    <div id="dash-body">
+
+      <!-- KPI Cards row -->
+      <div class="dash-kpi-row" id="dash-kpi-row">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Charts row -->
+      <div class="dash-charts-row">
+        <!-- Left: Timeline bar chart -->
+        <div class="dash-chart-card dash-chart-large">
+          <div class="dash-chart-title">📅 Leads por data</div>
+          <div class="dash-chart-sub">Distribuição ao longo do tempo por etapa</div>
+          <div class="dash-chart-wrap">
+            <canvas id="chart-timeline"></canvas>
+          </div>
+        </div>
+        <!-- Right: Donut stage distribution -->
+        <div class="dash-chart-card dash-chart-small">
+          <div class="dash-chart-title">🎯 Distribuição por etapa</div>
+          <div class="dash-chart-sub">Funil de conversão atual</div>
+          <div class="dash-chart-wrap">
+            <canvas id="chart-donut"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent performance table -->
+      <div class="dash-table-card">
+        <div class="dash-chart-title">👥 Performance por vendedor</div>
+        <div class="dash-chart-sub" style="margin-bottom:14px">Ranking de conversão e volume de leads</div>
+        <div id="dash-agent-table"><!-- Populated by JS --></div>
+      </div>
+
+    </div><!-- /dash-body -->
+  </div><!-- /dashboard-modal -->
+</div><!-- /dashboard-overlay -->
+
+<!-- Toast / Lightbox / Theme -->
+<div id="toast"></div>
+<div id="lightbox"><button id="lb-close">✕</button><img id="lb-img" alt=""></div>
+<button id="theme-btn" title="Alternar tema">🌙</button>
+
+<script src="app.js"></script>
+</body>
+</html>
