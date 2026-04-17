@@ -346,7 +346,7 @@ app.post('/assign', auth, role('supervisor', 'backoffice'), async (req, res) => 
    DASHBOARD — métricas agregadas
 ═══════════════════════════════════════════════════ */
 const STAGE_IDS = [
-  'lead','negociacao','aguardando-documentacao','aguardando-cotacao',
+  'lead','negociacao','aguardando-documentacao','aguardando-cotacao','agendamento',
   'lancar-venda','pendente-pagamento','pago','sem-retorno',
 ];
 

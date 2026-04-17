@@ -1,28 +1,29 @@
 /* ═══════════════════════════════════════════════════
-   T-CRM  app.js  v4.0
-   Bugs fixos:
-   • diffConvs: cache atualizado corretamente para todos
-   • Sem color-mix() — compatível com browsers mais antigos
-   • Login flow robusto com melhor feedback de erro
-   Dashboard:
-   • Power BI style com KPI cards, gráficos e tabela
-   • Filtros por vendedor e período
-   • Chart.js 4.x integrado
+   T-CRM  app.js  v4.1
+   Novidades:
+   • Sidebar retrátil com estado persistente
+   • Painéis: CRM, Dashboard, Agendamentos, Contatos
+   • Coluna "Agendamento" no kanban
+   • Modal de data/hora ao drop em Agendamento
+   • Worker de alertas persistentes
+   • Status Online/Ocupado/Offline
+   • Theme switch interativo
 ═══════════════════════════════════════════════════ */
 'use strict';
 
-const API = 'http://localhost:3000';
+const API = 'http://localhost:3001';
 
-/* ── Columns ─────────────────────────────────────── */
+/* ── Columns (agendamento adicionado) ────────────── */
 const COLUMNS = [
   { id:'lead',                    label:'Lead',                 color:'#2563eb', icon:'📣' },
   { id:'negociacao',              label:'Negociação',           color:'#0891b2', icon:'🤝' },
-  { id:'aguardando-documentacao', label:'Aguard. documentação', color:'#7c3aed', icon:'📋' },
-  { id:'aguardando-cotacao',      label:'Aguard. cotação',      color:'#d97706', icon:'📊' },
-  { id:'lancar-venda',            label:'Lançar venda',         color:'#059669', icon:'🚀' },
-  { id:'pendente-pagamento',      label:'Pendente pagamento',   color:'#dc2626', icon:'⏳' },
+  { id:'aguardando-documentacao', label:'Aguard. Doc.',         color:'#7c3aed', icon:'📋' },
+  { id:'aguardando-cotacao',      label:'Aguard. Cotação',      color:'#d97706', icon:'📊' },
+  { id:'agendamento',             label:'Agendamento',          color:'#ec4899', icon:'📅' },
+  { id:'lancar-venda',            label:'Lançar Venda',         color:'#059669', icon:'🚀' },
+  { id:'pendente-pagamento',      label:'Pendente Pagamento',   color:'#dc2626', icon:'⏳' },
   { id:'pago',                    label:'Pago',                 color:'#047857', icon:'✅' },
-  { id:'sem-retorno',             label:'Sem retorno',          color:'#6b7280', icon:'🔕' },
+  { id:'sem-retorno',             label:'Sem Retorno',          color:'#6b7280', icon:'🔕' },
 ];
 const COL_MAP = Object.fromEntries(COLUMNS.map(c => [c.id, c]));
 
@@ -60,6 +61,99 @@ function phone(conv){return conv.meta?.sender?.phone_number||conv.meta?.channel?
 function toast(msg,tp=''){const e=$('toast');e.textContent=msg;e.className=`show ${tp}`;clearTimeout(e._t);e._t=setTimeout(()=>e.className='',2800);}
 
 /* ════════════════════════════════════════════════
+   SIDEBAR
+════════════════════════════════════════════════ */
+function initSidebar() {
+  const sb = $('sidebar');
+  // Restaurar estado salvo
+  const saved = localStorage.getItem('tcrm_sb');
+  if (saved === '0') sb.classList.remove('sb-collapsed');
+  else sb.classList.add('sb-collapsed');
+
+  $('sb-toggle').addEventListener('click', () => {
+    const collapsed = sb.classList.toggle('sb-collapsed');
+    localStorage.setItem('tcrm_sb', collapsed ? '1' : '0');
+  });
+
+  // Navegação pelos botões da sidebar
+  QA('.sb-item[data-panel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = btn.dataset.panel;
+      if (panel) showPanel(panel);
+    });
+  });
+
+  // Dashboard (sem panel — abre overlay)
+  $('nav-dash').addEventListener('click', openDashboard);
+}
+
+function showPanel(id) {
+  // Atualizar painéis
+  QA('.panel').forEach(p => p.classList.remove('active'));
+  const panel = $('panel-' + id);
+  if (panel) panel.classList.add('active');
+
+  // Atualizar sidebar
+  QA('.sb-item').forEach(i => i.classList.remove('active'));
+  const navBtn = $('nav-' + id);
+  if (navBtn) navBtn.classList.add('active');
+
+  // Carregar conteúdo do painel ao ativar
+  if (id === 'schedules') renderSchedulesPanel();
+}
+
+/* ════════════════════════════════════════════════
+   STATUS (Online/Ocupado/Offline)
+════════════════════════════════════════════════ */
+function initStatus() {
+  const saved = localStorage.getItem('tcrm_status') || 'online';
+  const sel = $('sb-status-sel');
+  if (sel) sel.value = saved;
+  updateStatusDot(saved);
+  sel?.addEventListener('change', () => {
+    const v = sel.value;
+    localStorage.setItem('tcrm_status', v);
+    updateStatusDot(v);
+  });
+}
+
+function updateStatusDot(status) {
+  const dot = $('sb-status-dot');
+  if (!dot) return;
+  dot.className = 'sb-status-dot ' + status;
+}
+
+/* ════════════════════════════════════════════════
+   THEME
+════════════════════════════════════════════════ */
+function applyTheme(dark) {
+  document.body.classList.toggle('dark', dark);
+  document.body.classList.toggle('light', !dark);
+  // Compat com botão legado
+  const btn = $('theme-btn');
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  // Novo switch
+  const sw = $('theme-toggle-sw');
+  if (sw) sw.checked = dark;
+}
+
+function initTheme() {
+  applyTheme(localStorage.getItem('tcrm_theme') === 'dark');
+  // Novo switch interativo
+  $('theme-toggle-sw')?.addEventListener('change', () => {
+    const dark = $('theme-toggle-sw').checked;
+    applyTheme(dark);
+    localStorage.setItem('tcrm_theme', dark ? 'dark' : 'light');
+  });
+  // Compat botão legado (agora oculto, mas mantido)
+  $('theme-btn')?.addEventListener('click', () => {
+    const d = document.body.classList.contains('dark');
+    applyTheme(!d);
+    localStorage.setItem('tcrm_theme', d ? 'light' : 'dark');
+  });
+}
+
+/* ════════════════════════════════════════════════
    API
 ════════════════════════════════════════════════ */
 async function api(path,opts={}){
@@ -71,21 +165,6 @@ async function api(path,opts={}){
   if(!r.ok){const t=await r.text();throw new Error(t||`HTTP ${r.status}`);}
   return r.json();
 }
-
-/* ════════════════════════════════════════════════
-   THEME
-════════════════════════════════════════════════ */
-function applyTheme(dark){
-  document.body.classList.toggle('dark',dark);
-  document.body.classList.toggle('light',!dark);
-  $('theme-btn').textContent=dark?'☀️':'🌙';
-}
-function initTheme(){applyTheme(localStorage.getItem('tcrm_theme')==='dark');}
-$('theme-btn').addEventListener('click',()=>{
-  const d=document.body.classList.contains('dark');
-  applyTheme(!d);
-  localStorage.setItem('tcrm_theme',d?'light':'dark');
-});
 
 /* ════════════════════════════════════════════════
    AUTH
@@ -102,10 +181,18 @@ function doLogout(){
 
 function applyUserUI(){
   const u=S.user;if(!u)return;
-  $('hd-user-av').textContent=ini(u.name);$('hd-user-av').style.background=clr(u.name);
-  $('hd-user-name').textContent=u.name;$('hd-user-role').textContent=u.role;
-  if(u.role==='supervisor'){$('config-btn').style.display='flex';}
-  if(u.role==='vendedor'){const tb=$('toolbar');if(tb)tb.querySelector('#filter-agent')?.parentElement?.style.setProperty('display','none');}
+  $('hd-user-av').textContent=ini(u.name);
+  $('hd-user-av').style.background=clr(u.name);
+  $('hd-user-name').textContent=u.name;
+  if($('hd-user-role'))$('hd-user-role').textContent=u.role;
+  if(u.role==='supervisor'){
+    $('config-btn').style.display='flex';
+    const navCfg=$('nav-config');
+    if(navCfg)navCfg.style.display='flex';
+  }
+  if(u.role==='vendedor'){
+    $('sh-filter-wrap')?.style.setProperty('display','none');
+  }
 }
 
 async function tryAutoLogin(){
@@ -155,6 +242,8 @@ async function bootApp(){
   await loadConvs(true);
   clearInterval(S.boardTimer);
   S.boardTimer=setInterval(()=>loadConvs(false),3000);
+  updateScheduleBadge();
+  initScheduleWorker();
 }
 
 /* ════════════════════════════════════════════════
@@ -187,7 +276,6 @@ async function loadConvs(showLoader=false){
     const changed=hasChanged(newConvs);
     if(changed||showLoader){
       S.convs=newConvs;
-      // Bug fix: atualizar TODOS os itens no cache de uma vez
       newConvs.forEach(c=>S.convCache[c.id]={id:c.id,last_activity_at:c.last_activity_at,unread_count:c.unread_count,labels:JSON.stringify(c.labels||[])});
       renderBoard();
     }
@@ -197,7 +285,6 @@ async function loadConvs(showLoader=false){
   finally{$('board-loading').classList.add('hidden');}
 }
 
-/* Bug fix: diffConvs correto — verifica todos antes de retornar */
 function hasChanged(newList){
   if(newList.length!==S.convs.length)return true;
   for(const nc of newList){
@@ -273,6 +360,11 @@ function fillCard(card,conv,col){
   const c=clr(name);
   card.style.setProperty('--card-color',col.color);
   card.classList.toggle('active',String(conv.id)===String(S.activeId));
+
+  // Mostrar badge de agendamento se existir
+  const sched = getScheduleForConv(conv.id);
+  const schedTag = sched ? `<div class="card-sched-tag" title="Agendado: ${sched.date} ${sched.time}">📅 ${sched.time}</div>` : '';
+
   card.innerHTML=`
     <div class="card-top">
       <div class="card-av" style="background:${c}">${avSrc?`<img src="${avSrc}" loading="lazy" alt="">`:ini(name)}</div>
@@ -283,6 +375,7 @@ function fillCard(card,conv,col){
       ${unread>0?`<div class="card-unread">${unread}</div>`:''}
     </div>
     <div class="card-preview">${esc(preview)}</div>
+    ${schedTag}
     <div class="card-foot">
       <span class="card-agent">${esc(agent)}</span>
       <span class="card-time">${fmtT(lastTs)}</span>
@@ -309,6 +402,11 @@ function setupDrop(){
         await api(`/conversations/${_dragId}/label`,{method:'PATCH',body:JSON.stringify({labels:conv.labels})});
         toast(`✓ Movido para "${COL_MAP[colId]?.label}"`, 'ok');
         if(String(S.activeId)===_dragId)refreshStageBtns(conv);
+        // Gatilho de agendamento
+        if(colId==='agendamento'){
+          const name=conv.meta?.sender?.name||'Contato';
+          openScheduleModal(_dragId,name);
+        }
       }catch(err){toast('Erro: '+err.message,'err');await loadConvs();}
       QA('.card.dragging').forEach(c=>c.classList.remove('dragging'));_dragId=null;
     });
@@ -353,6 +451,11 @@ async function moveStage(convId,colId){
     await api(`/conversations/${convId}/label`,{method:'PATCH',body:JSON.stringify({labels})});
     conv.labels=labels;toast(`✓ Etapa: "${COL_MAP[colId]?.label}"`, 'ok');
     renderBoard();refreshStageBtns(conv);initLddDrop(conv);
+    // Gatilho de agendamento via stage buttons
+    if(colId==='agendamento'){
+      const name=conv.meta?.sender?.name||'Contato';
+      openScheduleModal(String(convId),name);
+    }
   }catch(err){toast('Erro: '+err.message,'err');}
 }
 
@@ -541,10 +644,255 @@ async function openContactConv(cid){
     if(!convs.length){toast('Nenhuma conversa encontrada','err');return;}
     const latest=convs.sort((a,b)=>b.id-a.id)[0];
     if(!S.convs.find(c=>c.id===latest.id)){S.convs.push(latest);renderBoard();}
+    showPanel('crm');
     openChat(latest.id);
   }catch(err){toast('Erro: '+err.message,'err');}
 }
 function closeSearch(){$('search-results').classList.remove('open');$('search-results').innerHTML='';}
+
+/* ════════════════════════════════════════════════
+   CONTACTS PANEL
+════════════════════════════════════════════════ */
+async function loadContactsPanel(query='') {
+  const list = $('contacts-list');
+  if (!query) {
+    list.innerHTML = '<div class="panel-empty"><div class="panel-empty-icon">🔍</div>Use a busca acima para encontrar contatos.</div>';
+    return;
+  }
+  list.innerHTML = '<div class="panel-loading"><div class="spinner-sm"></div> Buscando...</div>';
+  try {
+    const d = await api(`/contacts/search?q=${encodeURIComponent(query)}`);
+    const contacts = d?.payload || [];
+    if (!contacts.length) {
+      list.innerHTML = '<div class="panel-empty"><div class="panel-empty-icon">📭</div>Nenhum contato encontrado.</div>';
+      return;
+    }
+    list.innerHTML = contacts.slice(0, 50).map(c => `
+      <div class="contact-row">
+        <div class="contact-av" style="background:${clr(c.name||'')}">${c.avatar ? `<img src="${c.avatar}" alt="">` : ini(c.name || '')}</div>
+        <div class="contact-info">
+          <div class="contact-name">${esc(c.name || 'Sem nome')}</div>
+          <div class="contact-phone">📞 ${esc(c.phone_number || '—')}</div>
+          ${c.email ? `<div class="contact-email">✉️ ${esc(c.email)}</div>` : ''}
+        </div>
+        <button class="contact-open-btn" data-cid="${c.id}">Abrir chat →</button>
+      </div>`).join('');
+    list.querySelectorAll('.contact-open-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await openContactConv(btn.dataset.cid);
+      });
+    });
+  } catch (err) {
+    list.innerHTML = `<div class="panel-empty">Erro: ${esc(err.message)}</div>`;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   SCHEDULES — ARMAZENAMENTO
+════════════════════════════════════════════════ */
+function getSchedules() {
+  try { return JSON.parse(localStorage.getItem('tcrm_schedules') || '[]'); }
+  catch { return []; }
+}
+
+function saveSchedules(list) {
+  localStorage.setItem('tcrm_schedules', JSON.stringify(list));
+}
+
+function getScheduleForConv(convId) {
+  return getSchedules().find(s => String(s.convId) === String(convId)) || null;
+}
+
+function deleteSchedule(convId) {
+  saveSchedules(getSchedules().filter(s => String(s.convId) !== String(convId)));
+  renderSchedulesPanel();
+  updateScheduleBadge();
+  toast('✓ Agendamento removido', 'ok');
+}
+
+function updateScheduleBadge() {
+  const upcoming = getSchedules().filter(s => !s.alerted).length;
+  const badge = $('sched-badge');
+  if (!badge) return;
+  if (upcoming > 0) {
+    badge.textContent = upcoming;
+    badge.classList.add('visible');
+  } else {
+    badge.classList.remove('visible');
+  }
+}
+
+/* ════════════════════════════════════════════════
+   SCHEDULE MODAL
+════════════════════════════════════════════════ */
+let _schedConvId = null;
+let _schedConvName = null;
+
+function openScheduleModal(convId, name) {
+  _schedConvId = String(convId);
+  _schedConvName = name;
+  $('scm-contact-name').textContent = name;
+
+  // Verificar se já tem agendamento existente
+  const existing = getScheduleForConv(convId);
+  if (existing) {
+    $('scm-date').value = existing.date;
+    $('scm-time').value = existing.time;
+    $('scm-note').value = existing.note || '';
+  } else {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    $('scm-date').value = tomorrow.toISOString().split('T')[0];
+    $('scm-time').value = '09:00';
+    $('scm-note').value = '';
+  }
+  $('schedule-modal').classList.add('open');
+}
+
+function closeScheduleModal() {
+  $('schedule-modal').classList.remove('open');
+  _schedConvId = null;
+  _schedConvName = null;
+}
+
+function saveSchedule() {
+  const date = $('scm-date').value;
+  const time = $('scm-time').value;
+  const note = $('scm-note').value.trim();
+  if (!date || !time) { toast('Selecione data e horário', 'err'); return; }
+
+  const schedules = getSchedules().filter(s => s.convId !== _schedConvId);
+  schedules.push({
+    convId: _schedConvId,
+    name: _schedConvName,
+    date, time, note,
+    datetime: `${date}T${time}:00`,
+    createdAt: new Date().toISOString(),
+    alerted: false,
+  });
+  saveSchedules(schedules);
+  toast('✓ Agendamento salvo', 'ok');
+  closeScheduleModal();
+  renderSchedulesPanel();
+  renderBoard(); // atualizar badge nas cards
+  updateScheduleBadge();
+}
+
+/* ════════════════════════════════════════════════
+   SCHEDULE WORKER + ALERTA
+════════════════════════════════════════════════ */
+let _currentAlert = null;
+let _alertRepeatTimer = null;
+
+function initScheduleWorker() {
+  checkSchedules();
+  setInterval(checkSchedules, 30 * 1000); // a cada 30s
+}
+
+function checkSchedules() {
+  const schedules = getSchedules();
+  const now = new Date();
+  let updated = false;
+
+  for (const sched of schedules) {
+    if (sched.alerted) continue;
+    const dt = new Date(sched.datetime);
+    if (dt <= now) {
+      showScheduleAlert(sched);
+      sched.alerted = true;
+      updated = true;
+      break; // um alerta por vez
+    }
+  }
+
+  if (updated) {
+    saveSchedules(schedules);
+    updateScheduleBadge();
+  }
+}
+
+function showScheduleAlert(sched) {
+  _currentAlert = sched;
+  $('sal-name').textContent = sched.name;
+  const [y, m, d] = sched.date.split('-');
+  $('sal-time').textContent = `${d}/${m}/${y} às ${sched.time}`;
+  $('sal-note').textContent = sched.note || '';
+  $('sal-note').style.display = sched.note ? 'block' : 'none';
+  $('schedule-alert').classList.add('show');
+
+  // Repetir som/notificação a cada 60s enquanto não dispensar
+  clearInterval(_alertRepeatTimer);
+  _alertRepeatTimer = setInterval(() => {
+    if ($('schedule-alert').classList.contains('show')) {
+      // Piscar para chamar atenção
+      $('schedule-alert').style.transform = 'scale(1.03)';
+      setTimeout(() => { $('schedule-alert').style.transform = ''; }, 300);
+    } else {
+      clearInterval(_alertRepeatTimer);
+    }
+  }, 60 * 1000);
+
+  // Notificação nativa do browser (se permitido)
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('T-CRM — Retorno agendado!', {
+      body: `${sched.name} — ${d}/${m}/${y} às ${sched.time}`,
+      icon: '/favicon.ico',
+    });
+  } else if ('Notification' in window && Notification.permission !== 'denied') {
+    Notification.requestPermission();
+  }
+}
+
+function dismissAlert() {
+  $('schedule-alert').classList.remove('show');
+  clearInterval(_alertRepeatTimer);
+  _currentAlert = null;
+}
+
+/* ════════════════════════════════════════════════
+   SCHEDULE PANEL RENDER
+════════════════════════════════════════════════ */
+function renderSchedulesPanel() {
+  const el = $('schedules-list');
+  if (!el) return;
+  const schedules = getSchedules();
+  if (!schedules.length) {
+    el.innerHTML = '<div class="panel-empty"><div class="panel-empty-icon">📅</div>Nenhum agendamento criado ainda. Arraste um card para a coluna "Agendamento" no CRM.</div>';
+    return;
+  }
+  const sorted = [...schedules].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  const now = new Date();
+
+  el.innerHTML = sorted.map(s => {
+    const dt = new Date(s.datetime);
+    const isPast = dt < now;
+    const isToday = dt.toDateString() === now.toDateString();
+    const [y, m, d] = s.date.split('-');
+    return `<div class="sched-row ${isPast ? 'past' : isToday ? 'today' : ''}">
+      ${isToday ? '<span class="sched-tag-today">Hoje</span>' : ''}
+      <div class="sched-av" style="background:${clr(s.name)}">${ini(s.name)}</div>
+      <div class="sched-info">
+        <div class="sched-name">${esc(s.name)}</div>
+        <div class="sched-time">📅 ${d}/${m}/${y} às ${s.time}</div>
+        ${s.note ? `<div class="sched-note">${esc(s.note)}</div>` : ''}
+      </div>
+      <div class="sched-actions">
+        <button class="sched-open" data-id="${s.convId}">→ Chat</button>
+        <button class="sched-del" data-id="${s.convId}" title="Remover">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.sched-open').forEach(btn => {
+    btn.addEventListener('click', () => {
+      showPanel('crm');
+      openChat(btn.dataset.id);
+    });
+  });
+  el.querySelectorAll('.sched-del').forEach(btn => {
+    btn.addEventListener('click', () => deleteSchedule(btn.dataset.id));
+  });
+}
 
 /* ════════════════════════════════════════════════
    CONFIG PANEL
@@ -601,13 +949,10 @@ window._lb=src=>{$('lb-img').src=src;$('lightbox').classList.add('open');};
 /* ════════════════════════════════════════════════
    ██████████ DASHBOARD ██████████
 ════════════════════════════════════════════════ */
-
-/* Populate agent filter inside dashboard */
 function populateDashAgentFilter(){
   const sel=$('dash-filter-agent');if(!sel)return;
   sel.innerHTML='<option value="">Todos os vendedores</option>';
   S.agents.forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.name;sel.appendChild(o);});
-  // Vendedor só vê a si mesmo
   if(S.user?.role==='vendedor'){
     sel.disabled=true;
     const own=S.agents.find(a=>a.email===S.user.email||a.name===S.user.name);
@@ -617,7 +962,6 @@ function populateDashAgentFilter(){
 
 function openDashboard(){
   $('dashboard-overlay').classList.add('open');
-  // Set default date range: last 30 days
   const today=new Date();
   const past=new Date();past.setDate(past.getDate()-29);
   if(!$('dash-date-to').value)$('dash-date-to').value=today.toISOString().split('T')[0];
@@ -630,7 +974,6 @@ function closeDashboard(){
   destroyDashCharts();
 }
 
-/* Filter S.convs for dashboard */
 function getFilteredConvs(){
   let convs=[...S.convs];
   const agentId=$('dash-filter-agent').value;
@@ -642,32 +985,25 @@ function getFilteredConvs(){
   return convs;
 }
 
-/* Compute metrics from conversation array */
 function computeDashData(convs){
   const total=convs.length;
   const byStage={};COLUMNS.forEach(c=>byStage[c.id]=0);
   convs.forEach(conv=>{const col=colOf(conv);if(col)byStage[col.id]++;});
-
-  // By date
   const dateMap={};
   convs.forEach(conv=>{
     const key=new Date((conv.created_at||0)*1000).toISOString().split('T')[0];
     if(!dateMap[key]){dateMap[key]={date:key,total:0};COLUMNS.forEach(c=>dateMap[key][c.id]=0);}
     dateMap[key].total++;const col=colOf(conv);if(col)dateMap[key][col.id]++;
   });
-
-  // By agent
   const agentMap={};
   convs.forEach(conv=>{
     const ag=conv?.meta?.assignee;if(!ag)return;
     if(!agentMap[ag.id]){agentMap[ag.id]={id:ag.id,name:ag.name||'Agente',total:0};COLUMNS.forEach(c=>agentMap[ag.id][c.id]=0);}
     agentMap[ag.id].total++;const col=colOf(conv);if(col)agentMap[ag.id][col.id]++;
   });
-
   const pagos=byStage['pago']||0;
   const perdidos=byStage['sem-retorno']||0;
   const negociacao=byStage['negociacao']||0;
-
   return{
     total,byStage,
     conv:total>0?+((pagos/total)*100).toFixed(1):0,
@@ -688,18 +1024,14 @@ function renderDashboard(){
   renderAgentTable(data);
 }
 
-/* KPI Cards */
 function renderKPI(data){
   const row=$('dash-kpi-row');
-  const isDark=document.body.classList.contains('dark');
-
   const cards=[
     {label:'Total de leads recebidos',  value:data.total,              icon:'📣', color:'#2563eb', sub:'conversas no período', badge:null},
     {label:'Taxa de conversão',          value:data.conv+'%',           icon:'✅', color:'#047857', sub:'leads pagos / total',  badge:{txt:data.conv>0?'Positivo':'—',cls:data.conv>10?'up':data.conv>0?'neu':'down'}},
     {label:'Taxa de perda',              value:data.loss+'%',           icon:'🔕', color:'#dc2626', sub:'sem retorno / total',  badge:{txt:data.loss>30?'Alta':'Normal',cls:data.loss>30?'down':'up'}},
     {label:'Em negociação',              value:data.neg+'%',            icon:'🤝', color:'#0891b2', sub:'negociação / total',   badge:null},
   ];
-
   row.innerHTML=cards.map(c=>`
     <div class="kpi-card" style="--kpi-color:${c.color};--kpi-icon:'${c.icon}'">
       <div class="kpi-label">${c.label}</div>
@@ -711,26 +1043,20 @@ function renderKPI(data){
     </div>`).join('');
 }
 
-/* Timeline bar chart */
 function renderTimelineChart(data){
   const ctx=$('chart-timeline')?.getContext('2d');if(!ctx)return;
   const isDark=document.body.classList.contains('dark');
-  const gridClr=isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)';
   const txtClr=isDark?'#94a3b8':'#667085';
-
-  const dates=data.by_date.map(d=>{
-    const [y,m,day]=d.date.split('-');return`${day}/${m}`;
-  });
-
-  // Show 4 key stages
+  const gridClr=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
+  const dates=data.by_date.map(d=>d.date);
   const datasets=[
-    {label:'Lead',               data:data.by_date.map(d=>d['lead']||0),               backgroundColor:'rgba(37,99,235,.75)',   borderRadius:4},
-    {label:'Negociação',         data:data.by_date.map(d=>d['negociacao']||0),          backgroundColor:'rgba(8,145,178,.75)',   borderRadius:4},
-    {label:'Pendente Pagamento', data:data.by_date.map(d=>d['pendente-pagamento']||0),  backgroundColor:'rgba(220,38,38,.7)',    borderRadius:4},
-    {label:'Pago',               data:data.by_date.map(d=>d['pago']||0),               backgroundColor:'rgba(4,120,87,.75)',    borderRadius:4},
-    {label:'Sem retorno',        data:data.by_date.map(d=>d['sem-retorno']||0),         backgroundColor:'rgba(107,114,128,.6)',  borderRadius:4},
+    {label:'Lead',               data:data.by_date.map(d=>d['lead']||0),                  backgroundColor:'rgba(37,99,235,.75)',   borderRadius:4},
+    {label:'Negociação',         data:data.by_date.map(d=>d['negociacao']||0),             backgroundColor:'rgba(8,145,178,.75)',   borderRadius:4},
+    {label:'Agendamento',        data:data.by_date.map(d=>d['agendamento']||0),            backgroundColor:'rgba(236,72,153,.7)',   borderRadius:4},
+    {label:'Pendente Pagamento', data:data.by_date.map(d=>d['pendente-pagamento']||0),     backgroundColor:'rgba(220,38,38,.7)',    borderRadius:4},
+    {label:'Pago',               data:data.by_date.map(d=>d['pago']||0),                  backgroundColor:'rgba(4,120,87,.75)',    borderRadius:4},
+    {label:'Sem retorno',        data:data.by_date.map(d=>d['sem-retorno']||0),            backgroundColor:'rgba(107,114,128,.6)', borderRadius:4},
   ];
-
   S.dashCharts['timeline']=new Chart(ctx,{
     type:'bar',
     data:{labels:dates.length?dates:['Sem dados'],datasets},
@@ -745,22 +1071,18 @@ function renderTimelineChart(data){
   });
 }
 
-/* Donut chart */
 function renderDonutChart(data){
   const ctx=$('chart-donut')?.getContext('2d');if(!ctx)return;
   const isDark=document.body.classList.contains('dark');
   const txtClr=isDark?'#94a3b8':'#667085';
-
   const labels=COLUMNS.map(c=>c.label);
   const vals=COLUMNS.map(c=>data.byStage[c.id]||0);
   const colors=COLUMNS.map(c=>c.color);
   const hasData=vals.some(v=>v>0);
-
   if(!hasData){
     ctx.canvas.parentElement.innerHTML=`<div class="dash-empty"><div class="dash-empty-icon">📭</div>Sem dados para o período selecionado</div>`;
     return;
   }
-
   S.dashCharts['donut']=new Chart(ctx,{
     type:'doughnut',
     data:{labels,datasets:[{data:vals,backgroundColor:colors.map(c=>c+'cc'),borderColor:colors,borderWidth:2,hoverOffset:8}]},
@@ -775,7 +1097,6 @@ function renderDonutChart(data){
 }
 function total(arr){return arr.reduce((a,b)=>a+b,0);}
 
-/* Agent table */
 function renderAgentTable(data){
   const el=$('dash-agent-table');if(!el)return;
   if(!data.by_agent.length){
@@ -866,7 +1187,6 @@ function bindEvents(){
   $('lightbox').addEventListener('click',e=>{if(e.target===$('lightbox'))$('lightbox').classList.remove('open');});
 
   /* Dashboard */
-  $('dash-open-btn').addEventListener('click',openDashboard);
   $('dash-close').addEventListener('click',closeDashboard);
   $('dashboard-overlay').addEventListener('click',e=>{if(e.target===$('dashboard-overlay'))closeDashboard();});
   $('dash-apply-btn').addEventListener('click',renderDashboard);
@@ -877,13 +1197,44 @@ function bindEvents(){
     $('dash-filter-agent').value='';
     renderDashboard();
   });
+
+  /* Schedule modal */
+  $('scm-cancel').addEventListener('click', closeScheduleModal);
+  $('scm-save').addEventListener('click', saveSchedule);
+  $('schedule-modal').addEventListener('click', e => { if(e.target===$('schedule-modal')) closeScheduleModal(); });
+
+  /* Schedule alert */
+  $('sal-open').addEventListener('click', () => {
+    if (_currentAlert) {
+      showPanel('crm');
+      openChat(_currentAlert.convId);
+    }
+    dismissAlert();
+  });
+  $('sal-dismiss').addEventListener('click', dismissAlert);
+
+  /* Contacts panel search */
+  $('contacts-search-btn').addEventListener('click', () => {
+    loadContactsPanel($('contacts-search').value.trim());
+  });
+  $('contacts-search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadContactsPanel($('contacts-search').value.trim());
+  });
+
+  /* Nav Config btn */
+  $('nav-config')?.addEventListener('click', e => {
+    e.stopPropagation(); // evita conflito com data-panel
+    openConfig();
+  });
 }
 
 /* ════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded',async()=>{
+document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
+  initSidebar();
+  initStatus();
   bindEvents();
   await tryAutoLogin();
 });
