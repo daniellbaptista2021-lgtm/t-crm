@@ -76,7 +76,10 @@ const upload = multer({ dest: 'uploads/', limits: { fileSize: 50 * 1024 * 1024 }
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: 3600000,
+  setHeaders(res, fp) { if (fp.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); },
+}));
 
 /* ═══════════════════════════════════════════════════
    CHATWOOT HELPER
@@ -103,18 +106,35 @@ async function cw(urlPath, options = {}) {
   return txt ? JSON.parse(txt) : {};
 }
 
-/* Busca todas as conversas (paginado) */
+/* Cache em memória para conversas — TTL 8s */
+const convsCache = {};
+
+/* Busca todas as conversas com paginação paralela + cache */
 async function fetchAllConvs(assigneeId) {
-  let all = [];
-  for (let page = 1; page <= 10; page++) {
-    const data  = await cw(`/conversations?page=${page}&sort=last_activity_at`);
-    const batch = data?.data?.payload || [];
-    all = all.concat(batch);
-    if (batch.length < 25) break;
+  const cacheKey = assigneeId || '__all__';
+  const now = Date.now();
+  if (convsCache[cacheKey] && now - convsCache[cacheKey].ts < 8000) {
+    return convsCache[cacheKey].data;
   }
-  if (assigneeId) {
-    all = all.filter(c => String(c?.meta?.assignee?.id) === String(assigneeId));
+  let all = [], page = 1;
+  while (page <= 10) {
+    const chunk = Math.min(4, 11 - page);
+    const results = await Promise.all(
+      Array.from({ length: chunk }, (_, i) => page + i)
+        .map(p => cw(`/conversations?page=${p}&sort=last_activity_at`).catch(() => null))
+    );
+    let done = false;
+    for (const data of results) {
+      if (!data) { done = true; break; }
+      const batch = data?.data?.payload || [];
+      all = all.concat(batch);
+      if (batch.length < 25) { done = true; break; }
+    }
+    if (done) break;
+    page += chunk;
   }
+  if (assigneeId) all = all.filter(c => String(c?.meta?.assignee?.id) === String(assigneeId));
+  convsCache[cacheKey] = { data: all, ts: now };
   return all;
 }
 
@@ -303,9 +323,11 @@ app.get('/labels', auth, async (req, res) => {
 
 app.patch('/conversations/:id/label', auth, async (req, res) => {
   try {
-    res.json(await cw(`/conversations/${req.params.id}/labels`, {
+    const result = await cw(`/conversations/${req.params.id}/labels`, {
       method: 'POST', body: JSON.stringify({ labels: req.body.labels }),
-    }));
+    });
+    Object.keys(convsCache).forEach(k => delete convsCache[k]);
+    res.json(result);
   } catch (err) { console.error('[PATCH /label]', err.message); res.status(500).json({ error: err.message }); }
 });
 

@@ -262,7 +262,7 @@ async function bootApp(){
   await Promise.all([loadAgents(),loadLabels()]);
   await loadConvs(true);
   clearInterval(S.boardTimer);
-  S.boardTimer=setInterval(()=>loadConvs(false),3000);
+  S.boardTimer=setInterval(()=>loadConvs(false),10000);
   updateScheduleBadge();
   initScheduleWorker();
 }
