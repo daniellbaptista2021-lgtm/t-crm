@@ -11,7 +11,7 @@
 ═══════════════════════════════════════════════════ */
 'use strict';
 
-const API = 'http://localhost:3001';
+const API = '';
 
 /* ── Columns (agendamento adicionado) ────────────── */
 const COLUMNS = [
