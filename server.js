@@ -42,15 +42,22 @@ if (!CHATWOOT_URL || !CHATWOOT_TOKEN || !ACCOUNT_ID) {
 const BASE = `${CHATWOOT_URL}/api/v1/accounts/${ACCOUNT_ID}`;
 
 /* ── Users file ─────────────────────────────────── */
-const USERS_FILE = path.join(__dirname, 'users.json');
+const USERS_FILE     = path.join(__dirname, 'users.json');
+const SCHEDULES_FILE = path.join(__dirname, 'schedules.json');
 
 function readUsers() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
   catch { return []; }
 }
-
 function writeUsers(list) {
   fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2));
+}
+function readSchedules() {
+  try { return JSON.parse(fs.readFileSync(SCHEDULES_FILE, 'utf8')); }
+  catch { return []; }
+}
+function writeSchedules(list) {
+  fs.writeFileSync(SCHEDULES_FILE, JSON.stringify(list, null, 2));
 }
 
 /* Auto-seed supervisor na primeira execução */
@@ -323,12 +330,71 @@ app.get('/labels', auth, async (req, res) => {
 
 app.patch('/conversations/:id/label', auth, async (req, res) => {
   try {
+    const labels = req.body.labels || [];
     const result = await cw(`/conversations/${req.params.id}/labels`, {
-      method: 'POST', body: JSON.stringify({ labels: req.body.labels }),
+      method: 'POST', body: JSON.stringify({ labels }),
     });
+    // Tag HUMANO: desativa o robô na conversa
+    if (labels.some(l => String(l).toLowerCase() === 'humano')) {
+      try {
+        await cw(`/conversations/${req.params.id}/agent_bot`, { method: 'DELETE' });
+      } catch (e) { console.log('[HUMANO] bot disable:', e.message); }
+    }
     Object.keys(convsCache).forEach(k => delete convsCache[k]);
     res.json(result);
   } catch (err) { console.error('[PATCH /label]', err.message); res.status(500).json({ error: err.message }); }
+});
+
+/* ═══════════════════════════════════════════════════
+   AGENDAMENTOS
+═══════════════════════════════════════════════════ */
+app.get('/schedules', auth, (req, res) => {
+  res.json(readSchedules());
+});
+
+app.post('/schedules', auth, async (req, res) => {
+  try {
+    const { convId, name, date, time, note } = req.body;
+    if (!convId || !date || !time) return res.status(400).json({ error: 'convId, date e time obrigatórios' });
+    const all = readSchedules().filter(s => String(s.convId) !== String(convId));
+    const sched = {
+      id: `s_${Date.now()}`,
+      convId: String(convId), name: name || 'Cliente',
+      date, time, note: note || '',
+      datetime: `${date}T${time}:00`,
+      createdAt: new Date().toISOString(),
+      createdBy: req.user.name || req.user.email,
+      alerted: false,
+    };
+    all.push(sched);
+    writeSchedules(all);
+    // Notificar cliente no chat
+    const [y, m, d] = date.split('-');
+    const msg = `📅 *Agendamento confirmado!*\n\nOlá ${name}! Seu atendimento foi agendado:\n\n📆 *Data:* ${d}/${m}/${y}\n🕐 *Horário:* ${time}\n👤 *Atendente:* ${sched.createdBy}${note ? `\n📝 *Obs:* ${note}` : ''}`;
+    try {
+      await cw(`/conversations/${convId}/messages`, {
+        method: 'POST', body: JSON.stringify({ content: msg, message_type: 'outgoing', private: false }),
+      });
+    } catch (e) { console.error('[schedules] notif:', e.message); }
+    res.json(sched);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/schedules/:id/alerted', auth, (req, res) => {
+  const all = readSchedules();
+  const s = all.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).json({ error: 'Não encontrado' });
+  s.alerted = true;
+  writeSchedules(all);
+  res.json(s);
+});
+
+app.delete('/schedules/:id', auth, (req, res) => {
+  const all = readSchedules();
+  const filtered = all.filter(s => s.id !== req.params.id);
+  if (filtered.length === all.length) return res.status(404).json({ error: 'Não encontrado' });
+  writeSchedules(filtered);
+  res.json({ ok: true });
 });
 
 /* ═══════════════════════════════════════════════════
