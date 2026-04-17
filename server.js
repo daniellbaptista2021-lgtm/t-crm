@@ -347,12 +347,27 @@ app.post('/assign', auth, role('supervisor', 'backoffice'), async (req, res) => 
 ═══════════════════════════════════════════════════ */
 const STAGE_IDS = [
   'lead','negociacao','aguardando-documentacao','aguardando-cotacao','agendamento',
-  'lancar-venda','pendente-pagamento','pago','sem-retorno',
+  'lancar-venda','pendente-pagamento','pago','sem-retorno','outros',
 ];
-
+const LABEL_ALIASES = {
+  'aguardando_pagamento':'pendente-pagamento',
+  'aguardando-pagamento':'pendente-pagamento',
+  'pendente_pagamento':'pendente-pagamento',
+  'lancar_venda':'lancar-venda',
+  'lançar_venda':'lancar-venda',
+  'lançar-venda':'lancar-venda',
+  'aguardando_documentacao':'aguardando-documentacao',
+  'aguardando_cotacao':'aguardando-cotacao',
+  'sem_retorno':'sem-retorno',
+};
+function normLabel(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function getStage(conv) {
-  const ls = conv.labels || [];
-  return STAGE_IDS.find(id => ls.includes(id)) || null;
+  const ls = (conv.labels || []).map(normLabel);
+  for (const raw of ls) {
+    const norm = LABEL_ALIASES[raw] || raw;
+    if (STAGE_IDS.includes(norm)) return norm;
+  }
+  return 'outros';
 }
 
 app.get('/dashboard', auth, async (req, res) => {

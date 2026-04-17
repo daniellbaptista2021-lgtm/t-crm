@@ -24,8 +24,21 @@ const COLUMNS = [
   { id:'pendente-pagamento',      label:'Pendente Pagamento',   color:'#dc2626', icon:'⏳' },
   { id:'pago',                    label:'Pago',                 color:'#047857', icon:'✅' },
   { id:'sem-retorno',             label:'Sem Retorno',          color:'#6b7280', icon:'🔕' },
+  { id:'outros',                  label:'Outros',               color:'#475569', icon:'📦' },
 ];
 const COL_MAP = Object.fromEntries(COLUMNS.map(c => [c.id, c]));
+const LABEL_ALIASES = {
+  'aguardando_pagamento':'pendente-pagamento',
+  'aguardando-pagamento':'pendente-pagamento',
+  'pendente_pagamento':'pendente-pagamento',
+  'lancar_venda':'lancar-venda',
+  'lançar_venda':'lancar-venda',
+  'lançar-venda':'lancar-venda',
+  'aguardando_documentacao':'aguardando-documentacao',
+  'aguardando_cotacao':'aguardando-cotacao',
+  'sem_retorno':'sem-retorno',
+};
+function normLabel(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 
 const CLRS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#9333ea','#65a30d','#e11d48','#0284c7'];
 
@@ -55,7 +68,15 @@ function fmtT(ts){if(!ts)return'';const d=new Date(ts*1000),n=new Date();if(d.to
 function fmtD(ts){if(!ts)return'';const d=new Date(ts*1000),n=new Date();if(d.toDateString()===n.toDateString())return'Hoje';if(Math.floor((n-d)/86400000)===1)return'Ontem';return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});}
 function fmtSec(s){return`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}
 function fmtB(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB';}
-function colOf(conv){for(const c of COLUMNS)if((conv.labels||[]).includes(c.id))return c;return null;}
+function colOf(conv){
+  const labels=(conv.labels||[]).map(normLabel);
+  for(const raw of labels){
+    const norm=LABEL_ALIASES[raw]||raw;
+    const hit=COLUMNS.find(c=>c.id===norm);
+    if(hit)return hit;
+  }
+  return COL_MAP['outros'];
+}
 function phone(conv){return conv.meta?.sender?.phone_number||conv.meta?.channel?.phone_number||'';}
 
 function toast(msg,tp=''){const e=$('toast');e.textContent=msg;e.className=`show ${tp}`;clearTimeout(e._t);e._t=setTimeout(()=>e.className='',2800);}
