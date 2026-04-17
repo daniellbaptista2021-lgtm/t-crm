@@ -46,7 +46,7 @@ const CLRS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#9333
 const S = {
   token: null, user: null,
   convs: [], convCache: {}, msgCache: {},
-  agents: [], allLabels: [],
+  agents: [], allLabels: [], schedules: [],
   activeId: null, pendingFile: null, selLabels: [],
   isRec: false, mediaRec: null, audioChunks: [],
   audioBlob: null, recSecs: 0, recInterval: null,
@@ -259,12 +259,16 @@ $('logout-btn').addEventListener('click',doLogout);
 async function bootApp(){
   buildBoard();
   populateDashAgentFilter();
-  await Promise.all([loadAgents(),loadLabels()]);
+  await Promise.all([loadAgents(),loadLabels(),loadSchedules()]);
   await loadConvs(true);
   clearInterval(S.boardTimer);
   S.boardTimer=setInterval(()=>loadConvs(false),10000);
   updateScheduleBadge();
   initScheduleWorker();
+}
+
+async function loadSchedules(){
+  try{const d=await api('/schedules');S.schedules=Array.isArray(d)?d:[];}catch{S.schedules=[];}
 }
 
 /* ════════════════════════════════════════════════
@@ -333,10 +337,11 @@ function buildBoard(){
   setupDrop();
 }
 
+const LAZY_PAGE=20;
+
 function renderBoard(){
   const groups={};COLUMNS.forEach(c=>groups[c.id]=[]);
   S.convs.forEach(conv=>{const col=colOf(conv);if(col)groups[col.id].push(conv);});
-
   COLUMNS.forEach(col=>{
     const body=document.querySelector(`[data-body="${col.id}"]`);
     const colEl=document.querySelector(`[data-col="${col.id}"]`);
@@ -350,12 +355,29 @@ function renderBoard(){
       return;
     }
     body.querySelector('.col-empty')?.remove();
-    convos.forEach(conv=>{
+    body._allConvs=convos; body._col=col;
+    const already=body.querySelectorAll('.card').length;
+    const toShow=Math.min(Math.max(already,LAZY_PAGE),convos.length);
+    convos.slice(0,toShow).forEach(conv=>{
       const id=String(conv.id);
       let card=body.querySelector(`.card[data-id="${id}"]`);
       if(!card){card=mkCard(conv,col);body.appendChild(card);}
       else fillCard(card,conv,col);
     });
+    if(!body._scrollBound){
+      body._scrollBound=true;
+      body.addEventListener('scroll',()=>{
+        if(body.scrollTop+body.clientHeight>=body.scrollHeight-80){
+          const n=body.querySelectorAll('.card').length;
+          const all=body._allConvs||[];
+          if(n>=all.length)return;
+          all.slice(n,n+LAZY_PAGE).forEach(conv=>{
+            if(!body.querySelector(`.card[data-id="${conv.id}"]`))
+              body.appendChild(mkCard(conv,body._col));
+          });
+        }
+      });
+    }
   });
 }
 
@@ -558,12 +580,13 @@ function renderMsgs(msgs){
 
 function buildMsg(msg){
   const isOut=msg.message_type===1||msg.message_type==='outgoing';
+  const hasAudio=(msg.attachments||[]).some(a=>a.file_type==='audio');
   const wrap=document.createElement('div');wrap.className=`message ${isOut?'out':'in'}`;
   wrap.dataset.msgId=msg.id;
   const sn=isOut?'Agente':(msg.sender?.name||'Contato');const sc=clr(sn);const sav=msg.sender?.avatar_url||msg.sender?.avatar;
   wrap.innerHTML=`
     <div class="msg-av" style="background:${sc}">${sav?`<img src="${sav}" alt="">`:ini(sn)}</div>
-    <div><div class="msg-bub">${buildMsgBody(msg)}<div class="msg-time">${fmtT(msg.created_at)} ${isOut?'✓✓':''}</div></div></div>`;
+    <div><div class="msg-bub${isOut&&hasAudio?' has-audio':''}">${buildMsgBody(msg)}<div class="msg-time">${fmtT(msg.created_at)} ${isOut?'✓✓':''}</div></div></div>`;
   return wrap;
 }
 
@@ -744,38 +767,27 @@ async function loadContactsPanel(query='') {
 }
 
 /* ════════════════════════════════════════════════
-   SCHEDULES — ARMAZENAMENTO
+   SCHEDULES — ARMAZENAMENTO (backend)
 ════════════════════════════════════════════════ */
-function getSchedules() {
-  try { return JSON.parse(localStorage.getItem('tcrm_schedules') || '[]'); }
-  catch { return []; }
+function getScheduleForConv(convId){
+  return S.schedules.find(s=>String(s.convId)===String(convId))||null;
 }
 
-function saveSchedules(list) {
-  localStorage.setItem('tcrm_schedules', JSON.stringify(list));
+async function deleteSchedule(schedId){
+  try{
+    await api(`/schedules/${schedId}`,{method:'DELETE'});
+    S.schedules=S.schedules.filter(s=>s.id!==schedId);
+    renderSchedulesPanel();updateScheduleBadge();
+    renderBoard();
+    toast('✓ Agendamento removido','ok');
+  }catch(err){toast('Erro: '+err.message,'err');}
 }
 
-function getScheduleForConv(convId) {
-  return getSchedules().find(s => String(s.convId) === String(convId)) || null;
-}
-
-function deleteSchedule(convId) {
-  saveSchedules(getSchedules().filter(s => String(s.convId) !== String(convId)));
-  renderSchedulesPanel();
-  updateScheduleBadge();
-  toast('✓ Agendamento removido', 'ok');
-}
-
-function updateScheduleBadge() {
-  const upcoming = getSchedules().filter(s => !s.alerted).length;
-  const badge = $('sched-badge');
-  if (!badge) return;
-  if (upcoming > 0) {
-    badge.textContent = upcoming;
-    badge.classList.add('visible');
-  } else {
-    badge.classList.remove('visible');
-  }
+function updateScheduleBadge(){
+  const upcoming=S.schedules.filter(s=>!s.alerted).length;
+  const badge=$('sched-badge');if(!badge)return;
+  if(upcoming>0){badge.textContent=upcoming;badge.classList.add('visible');}
+  else badge.classList.remove('visible');
 }
 
 /* ════════════════════════════════════════════════
@@ -788,8 +800,6 @@ function openScheduleModal(convId, name) {
   _schedConvId = String(convId);
   _schedConvName = name;
   $('scm-contact-name').textContent = name;
-
-  // Verificar se já tem agendamento existente
   const existing = getScheduleForConv(convId);
   if (existing) {
     $('scm-date').value = existing.date;
@@ -811,27 +821,16 @@ function closeScheduleModal() {
   _schedConvName = null;
 }
 
-function saveSchedule() {
-  const date = $('scm-date').value;
-  const time = $('scm-time').value;
-  const note = $('scm-note').value.trim();
-  if (!date || !time) { toast('Selecione data e horário', 'err'); return; }
-
-  const schedules = getSchedules().filter(s => s.convId !== _schedConvId);
-  schedules.push({
-    convId: _schedConvId,
-    name: _schedConvName,
-    date, time, note,
-    datetime: `${date}T${time}:00`,
-    createdAt: new Date().toISOString(),
-    alerted: false,
-  });
-  saveSchedules(schedules);
-  toast('✓ Agendamento salvo', 'ok');
-  closeScheduleModal();
-  renderSchedulesPanel();
-  renderBoard(); // atualizar badge nas cards
-  updateScheduleBadge();
+async function saveSchedule() {
+  const date=$('scm-date').value;const time=$('scm-time').value;const note=$('scm-note').value.trim();
+  if(!date||!time){toast('Selecione data e horário','err');return;}
+  try{
+    const sched=await api('/schedules',{method:'POST',body:JSON.stringify({convId:_schedConvId,name:_schedConvName,date,time,note})});
+    S.schedules=S.schedules.filter(s=>s.convId!==_schedConvId);
+    S.schedules.push(sched);
+    toast('✓ Agendamento salvo — cliente notificado','ok');
+    closeScheduleModal();renderSchedulesPanel();renderBoard();updateScheduleBadge();
+  }catch(err){toast('Erro: '+err.message,'err');}
 }
 
 /* ════════════════════════════════════════════════
@@ -845,26 +844,18 @@ function initScheduleWorker() {
   setInterval(checkSchedules, 30 * 1000); // a cada 30s
 }
 
-function checkSchedules() {
-  const schedules = getSchedules();
-  const now = new Date();
-  let updated = false;
-
-  for (const sched of schedules) {
-    if (sched.alerted) continue;
-    const dt = new Date(sched.datetime);
-    if (dt <= now) {
+function checkSchedules(){
+  const now=new Date();let updated=false;
+  for(const sched of S.schedules){
+    if(sched.alerted)continue;
+    if(new Date(sched.datetime)<=now){
       showScheduleAlert(sched);
-      sched.alerted = true;
-      updated = true;
-      break; // um alerta por vez
+      sched.alerted=true;updated=true;
+      api(`/schedules/${sched.id}/alerted`,{method:'PATCH'}).catch(()=>{});
+      break;
     }
   }
-
-  if (updated) {
-    saveSchedules(schedules);
-    updateScheduleBadge();
-  }
+  if(updated)updateScheduleBadge();
 }
 
 function showScheduleAlert(sched) {
@@ -908,45 +899,38 @@ function dismissAlert() {
 /* ════════════════════════════════════════════════
    SCHEDULE PANEL RENDER
 ════════════════════════════════════════════════ */
-function renderSchedulesPanel() {
-  const el = $('schedules-list');
-  if (!el) return;
-  const schedules = getSchedules();
-  if (!schedules.length) {
-    el.innerHTML = '<div class="panel-empty"><div class="panel-empty-icon">📅</div>Nenhum agendamento criado ainda. Arraste um card para a coluna "Agendamento" no CRM.</div>';
+function renderSchedulesPanel(){
+  const el=$('schedules-list');if(!el)return;
+  if(!S.schedules.length){
+    el.innerHTML='<div class="panel-empty"><div class="panel-empty-icon">📅</div>Nenhum agendamento criado ainda. Arraste um card para a coluna "Agendamento" no CRM.</div>';
     return;
   }
-  const sorted = [...schedules].sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
-  const now = new Date();
-
-  el.innerHTML = sorted.map(s => {
-    const dt = new Date(s.datetime);
-    const isPast = dt < now;
-    const isToday = dt.toDateString() === now.toDateString();
-    const [y, m, d] = s.date.split('-');
-    return `<div class="sched-row ${isPast ? 'past' : isToday ? 'today' : ''}">
-      ${isToday ? '<span class="sched-tag-today">Hoje</span>' : ''}
+  const sorted=[...S.schedules].sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+  const now=new Date();
+  el.innerHTML=sorted.map(s=>{
+    const dt=new Date(s.datetime);
+    const isPast=dt<now;const isToday=dt.toDateString()===now.toDateString();
+    const [y,m,d]=s.date.split('-');
+    return `<div class="sched-row ${isPast?'past':isToday?'today':''}">
+      ${isToday?'<span class="sched-tag-today">Hoje</span>':''}
       <div class="sched-av" style="background:${clr(s.name)}">${ini(s.name)}</div>
       <div class="sched-info">
         <div class="sched-name">${esc(s.name)}</div>
         <div class="sched-time">📅 ${d}/${m}/${y} às ${s.time}</div>
-        ${s.note ? `<div class="sched-note">${esc(s.note)}</div>` : ''}
+        ${s.note?`<div class="sched-note">${esc(s.note)}</div>`:''}
+        ${s.createdBy?`<div class="sched-by">👤 ${esc(s.createdBy)}</div>`:''}
       </div>
       <div class="sched-actions">
-        <button class="sched-open" data-id="${s.convId}">→ Chat</button>
-        <button class="sched-del" data-id="${s.convId}" title="Remover">🗑</button>
+        <button class="sched-open" data-conv="${s.convId}" title="Abrir conversa">💬 Chat</button>
+        <button class="sched-del" data-id="${s.id}" title="Remover">🗑</button>
       </div>
     </div>`;
   }).join('');
-
-  el.querySelectorAll('.sched-open').forEach(btn => {
-    btn.addEventListener('click', () => {
-      showPanel('crm');
-      openChat(btn.dataset.id);
-    });
+  el.querySelectorAll('.sched-open').forEach(btn=>{
+    btn.addEventListener('click',()=>{showPanel('crm');openChat(btn.dataset.conv);});
   });
-  el.querySelectorAll('.sched-del').forEach(btn => {
-    btn.addEventListener('click', () => deleteSchedule(btn.dataset.id));
+  el.querySelectorAll('.sched-del').forEach(btn=>{
+    btn.addEventListener('click',()=>deleteSchedule(btn.dataset.id));
   });
 }
 

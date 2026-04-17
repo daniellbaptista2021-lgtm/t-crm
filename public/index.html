@@ -49,7 +49,18 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
         <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
       </svg>
+      <span class="sb-menu-label">Menu</span>
     </button>
+
+    <!-- Search (só visível quando sidebar expandida) -->
+    <div id="sb-search-outer">
+      <div id="gs-wrap">
+        <span class="gs-icon">🔍</span>
+        <input id="global-search" type="text" placeholder="Buscar cliente..." autocomplete="off">
+        <button id="gs-clear" title="Limpar">✕</button>
+        <div id="search-results"></div>
+      </div>
+    </div>
 
     <div class="sb-logo">
       <div class="sb-logo-icon">T</div>
@@ -153,15 +164,6 @@
         <span class="sh-total-lbl">Total:</span>
         <strong id="tb-total" class="sh-total-val">—</strong>
       </div>
-      <div class="sh-center">
-        <!-- Search bar -->
-        <div id="gs-wrap">
-          <span class="gs-icon">🔍</span>
-          <input id="global-search" type="text" placeholder="Buscar clientes por nome ou telefone..." autocomplete="off">
-          <button id="gs-clear" title="Limpar">✕</button>
-          <div id="search-results"></div>
-        </div>
-      </div>
       <div class="sh-right">
         <div id="sh-filter-wrap" class="sh-filter-wrap">
           <label class="sh-filter-lbl">Vendedor</label>
@@ -199,7 +201,7 @@
                 <div id="chat-head-phone" class="chat-head-phone">📞 —</div>
               </div>
               <div style="position:relative">
-                <button id="labels-btn">🏷️ Etiquetas</button>
+                <button id="labels-btn" title="Etiquetas">🏷️</button>
                 <div id="labels-dropdown">
                   <div class="ldd-title">Selecionar etiquetas</div>
                   <div class="ldd-grid" id="ldd-grid"></div>
