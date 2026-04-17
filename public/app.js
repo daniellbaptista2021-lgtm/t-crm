@@ -449,9 +449,13 @@ async function openChat(convId){
   $('chat-head-name').textContent=name;$('chat-head-phone').innerHTML=`📞 ${esc(ph)}`;
   refreshStageBtns(conv);initLddDrop(conv);
   $('chat-panel').classList.add('open');
-  $('messages-area').innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:60px;color:var(--text-3)"><div class="spinner-sm"></div>Carregando...</div>`;
   clearInterval(S.msgTimer);
-  if(S.msgCache[convId])renderMsgs(S.msgCache[convId]);
+  $('messages-area').innerHTML='';
+  if(S.msgCache[convId]){
+    renderMsgs(S.msgCache[convId]);
+  } else {
+    $('messages-area').innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:60px;color:var(--text-3)"><div class="spinner-sm"></div>Carregando...</div>`;
+  }
   await loadMsgs(convId);
   S.msgTimer=setInterval(()=>loadMsgs(convId),3000);
 }
@@ -516,6 +520,8 @@ async function loadMsgs(convId){
     const d=await api(`/messages/${convId}`);if(!d)return;
     const msgs=d?.payload||[];
     const cached=S.msgCache[convId]||[];
+    // Não sobrescrever enquanto há mensagens otimistas pendentes
+    if(cached.some(m=>String(m.id).startsWith('temp_')))return;
     if(msgs[msgs.length-1]?.id!==cached[cached.length-1]?.id||msgs.length!==cached.length){
       S.msgCache[convId]=msgs;
       if(String(S.activeId)===String(convId))renderMsgs(msgs);
@@ -524,20 +530,38 @@ async function loadMsgs(convId){
 }
 
 function renderMsgs(msgs){
-  const atBot=$('messages-area').scrollHeight-$('messages-area').scrollTop-$('messages-area').clientHeight<80;
+  const area=$('messages-area');
+  const atBot=area.scrollHeight-area.scrollTop-area.clientHeight<80;
   const sorted=[...msgs].sort((a,b)=>a.created_at-b.created_at);
-  $('messages-area').innerHTML='';let lastDate='';
-  sorted.forEach(msg=>{
-    const dl=fmtD(msg.created_at);
-    if(dl!==lastDate){const d=document.createElement('div');d.className='msg-div';d.textContent=dl;$('messages-area').appendChild(d);lastDate=dl;}
-    $('messages-area').appendChild(buildMsg(msg));
-  });
-  if(atBot||msgs.length<=12)$('messages-area').scrollTop=$('messages-area').scrollHeight;
+  // Remove mensagens temporárias (otimistas) antes de verificar incrementais
+  area.querySelectorAll('[data-msg-id^="temp_"]').forEach(el=>el.remove());
+  const rendered=area.querySelectorAll('[data-msg-id]');
+  if(rendered.length>0){
+    const existingIds=new Set([...rendered].map(el=>el.dataset.msgId));
+    const newMsgs=sorted.filter(m=>!existingIds.has(String(m.id)));
+    if(newMsgs.length===0){if(atBot||msgs.length<=12)area.scrollTop=area.scrollHeight;return;}
+    const lastDiv=[...area.querySelectorAll('.msg-div')].pop();
+    let lastDate=lastDiv?.textContent||'';
+    newMsgs.forEach(msg=>{
+      const dl=fmtD(msg.created_at);
+      if(dl!==lastDate){const d=document.createElement('div');d.className='msg-div';d.textContent=dl;area.appendChild(d);lastDate=dl;}
+      area.appendChild(buildMsg(msg));
+    });
+  } else {
+    area.innerHTML='';let lastDate='';
+    sorted.forEach(msg=>{
+      const dl=fmtD(msg.created_at);
+      if(dl!==lastDate){const d=document.createElement('div');d.className='msg-div';d.textContent=dl;area.appendChild(d);lastDate=dl;}
+      area.appendChild(buildMsg(msg));
+    });
+  }
+  if(atBot||msgs.length<=12)area.scrollTop=area.scrollHeight;
 }
 
 function buildMsg(msg){
   const isOut=msg.message_type===1||msg.message_type==='outgoing';
   const wrap=document.createElement('div');wrap.className=`message ${isOut?'out':'in'}`;
+  wrap.dataset.msgId=msg.id;
   const sn=isOut?'Agente':(msg.sender?.name||'Contato');const sc=clr(sn);const sav=msg.sender?.avatar_url||msg.sender?.avatar;
   wrap.innerHTML=`
     <div class="msg-av" style="background:${sc}">${sav?`<img src="${sav}" alt="">`:ini(sn)}</div>
@@ -565,8 +589,23 @@ async function sendMsg(){
   if(S.pendingFile){await sendMedia(convId,content);return;}
   if(!content||!convId)return;
   $('msg-input').value='';$('msg-input').style.height='';
-  try{await api(`/messages/${convId}`,{method:'POST',body:JSON.stringify({content})});await loadMsgs(convId);}
-  catch(err){toast('Erro: '+err.message,'err');$('msg-input').value=content;}
+  // Exibe mensagem imediatamente (UI otimista)
+  const cached=S.msgCache[convId]||[];
+  const tempMsg={id:`temp_${Date.now()}`,content,message_type:1,created_at:Math.floor(Date.now()/1000),sender:{name:S.user?.name||'Agente',avatar_url:S.user?.avatar_url}};
+  S.msgCache[convId]=[...cached,tempMsg];
+  renderMsgs(S.msgCache[convId]);
+  try{
+    await api(`/messages/${convId}`,{method:'POST',body:JSON.stringify({content})});
+    // Remove temp antes de buscar dados reais
+    S.msgCache[convId]=(S.msgCache[convId]||[]).filter(m=>!String(m.id).startsWith('temp_'));
+    await loadMsgs(convId);
+  }
+  catch(err){
+    toast('Erro: '+err.message,'err');
+    $('msg-input').value=content;
+    S.msgCache[convId]=cached;
+    renderMsgs(cached);
+  }
 }
 async function sendMedia(convId,caption=''){
   const file=S.pendingFile;clearFP();
