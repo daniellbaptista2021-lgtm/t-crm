@@ -220,12 +220,16 @@ body {
 
 /* Sidebar search */
 #sb-search-outer {
-  padding: 8px 8px 4px; flex-shrink: 0; overflow: hidden;
+  padding: 6px 8px 2px; flex-shrink: 0;
 }
 #sidebar.sb-collapsed #sb-search-outer { display: none; }
 #sb-search-outer #gs-wrap { width: 100%; }
 #sb-search-outer #global-search { font-size: 12px; height: 32px; }
-#sb-search-outer #search-results { left: 8px; right: 8px; }
+/* Results usar fixed para não ser cortado pelo overflow:hidden da sidebar */
+#sb-search-outer #search-results {
+  position: fixed; top: auto; left: auto;
+  width: 200px; max-height: 260px;
+}
 
 .sb-spacer { flex: 1; }
 

@@ -698,8 +698,13 @@ function onSearch(){
   const q=$('global-search').value.trim();$('gs-clear').classList.toggle('visible',q.length>0);
   clearTimeout(S.searchTimer);
   if(!q){closeSearch();return;}
-  $('search-results').classList.add('open');
-  $('search-results').innerHTML='<div class="search-hint"><div class="spinner-sm"></div>Buscando...</div>';
+  const sr=$('search-results');const inp=$('global-search');
+  if($('sb-search-outer')){
+    const r=inp.getBoundingClientRect();
+    sr.style.top=(r.bottom+4)+'px';sr.style.left=r.left+'px';sr.style.width=r.width+'px';
+  }
+  sr.classList.add('open');
+  sr.innerHTML='<div class="search-hint"><div class="spinner-sm"></div>Buscando...</div>';
   S.searchTimer=setTimeout(()=>doSearch(q),350);
 }
 async function doSearch(q){
