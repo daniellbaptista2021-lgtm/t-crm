@@ -491,8 +491,9 @@ async function openChat(convId){
 }
 
 function refreshStageBtns(conv){
+  const el=$('stage-btns');if(!el)return;
   const cur=colOf(conv)?.id;
-  $('stage-btns').innerHTML=COLUMNS.map(c=>`
+  el.innerHTML=COLUMNS.map(c=>`
     <button class="stage-btn ${c.id===cur?'active':''}" data-col="${c.id}" style="background:${c.color};border-color:${c.color}">
       ${c.icon} ${c.label}
     </button>`).join('');
@@ -514,17 +515,19 @@ async function moveStage(convId,colId){
   }catch(err){toast('Erro: '+err.message,'err');}
 }
 
-/* Labels dropdown */
+/* Labels dropdown — lista vertical */
 function initLddDrop(conv){
   const cl=conv.labels||[];S.selLabels=[...cl];
-  const chips=[
+  const items=[
     ...COLUMNS.map(c=>({id:c.id,title:c.label,color:c.color})),
     ...S.allLabels.filter(l=>!COL_MAP[l.title?.toLowerCase()?.replace(/ /g,'-')]).map(l=>({id:l.title,title:l.title,color:l.color||'#64748b'})),
   ];
-  $('ldd-grid').innerHTML=chips.map(l=>`
-    <span class="lbl-chip ${cl.includes(l.id)?'on':''}" data-lid="${esc(l.id)}" style="background:${l.color};border-color:${l.color}">
-      ${esc(l.title)}
-    </span>`).join('');
+  $('ldd-grid').innerHTML=items.map(l=>`
+    <div class="lbl-chip ${cl.includes(l.id)?'on':''}" data-lid="${esc(l.id)}">
+      <span class="lbl-dot" style="background:${l.color}"></span>
+      <span class="lbl-name">${esc(l.title)}</span>
+      <span class="lbl-check">✓</span>
+    </div>`).join('');
   QA('#ldd-grid .lbl-chip').forEach(ch=>{
     ch.addEventListener('click',()=>{
       const lid=ch.dataset.lid;
@@ -538,7 +541,7 @@ async function applyLabels(){
   try{
     await api(`/conversations/${S.activeId}/label`,{method:'PATCH',body:JSON.stringify({labels:S.selLabels})});
     conv.labels=[...S.selLabels];toast('✓ Etiquetas atualizadas','ok');
-    renderBoard();refreshStageBtns(conv);$('labels-dropdown').classList.remove('open');
+    renderBoard();$('labels-dropdown').classList.remove('open');
   }catch(err){toast('Erro: '+err.message,'err');}
 }
 
