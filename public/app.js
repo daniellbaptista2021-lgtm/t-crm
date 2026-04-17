@@ -51,7 +51,7 @@ const S = {
   isRec: false, mediaRec: null, audioChunks: [],
   audioBlob: null, recSecs: 0, recInterval: null,
   boardTimer: null, msgTimer: null, searchTimer: null,
-  dashCharts: {},
+  dashCharts: {}, funnelFilter: 'all', lastUpdateTime: 0,
 };
 
 /* ── DOM ─────────────────────────────────────────── */
@@ -207,12 +207,12 @@ function applyUserUI(){
   $('hd-user-name').textContent=u.name;
   if($('hd-user-role'))$('hd-user-role').textContent=u.role;
   if(u.role==='supervisor'){
-    $('config-btn').style.display='flex';
     const navCfg=$('nav-config');
     if(navCfg)navCfg.style.display='flex';
   }
   if(u.role==='vendedor'){
-    $('sh-filter-wrap')?.style.setProperty('display','none');
+    const sec=$('sb-agent-section');
+    if(sec)sec.style.display='none';
   }
 }
 
@@ -259,10 +259,12 @@ $('logout-btn').addEventListener('click',doLogout);
 async function bootApp(){
   buildBoard();
   populateDashAgentFilter();
+  initFunnelFilter();
+  startUpdateTimer();
   await Promise.all([loadAgents(),loadLabels(),loadSchedules()]);
   await loadConvs(true);
   clearInterval(S.boardTimer);
-  S.boardTimer=setInterval(()=>loadConvs(false),10000);
+  S.boardTimer=setInterval(()=>loadConvs(false),5000);
   updateScheduleBadge();
   initScheduleWorker();
 }
@@ -304,8 +306,9 @@ async function loadConvs(showLoader=false){
       newConvs.forEach(c=>S.convCache[c.id]={id:c.id,last_activity_at:c.last_activity_at,unread_count:c.unread_count,labels:JSON.stringify(c.labels||[])});
       renderBoard();
     }
-    $('tb-total').textContent=`${S.convs.length} conversa${S.convs.length!==1?'s':''}`;
-    $('refresh-label').textContent=new Date().toLocaleTimeString('pt-BR');
+    S.lastUpdateTime=Date.now();
+    const tot=$('tb-total');if(tot)tot.textContent=`${S.convs.length} conv.`;
+    updateFunnelCounts();
   }catch(err){if(showLoader)toast('Erro: '+err.message,'err');}
   finally{$('board-loading').classList.add('hidden');}
 }
@@ -340,8 +343,13 @@ function buildBoard(){
 const LAZY_PAGE=20;
 
 function renderBoard(){
+  const ff=S.funnelFilter||'all';
   const groups={};COLUMNS.forEach(c=>groups[c.id]=[]);
-  S.convs.forEach(conv=>{const col=colOf(conv);if(col)groups[col.id].push(conv);});
+  const src=ff==='unassigned'?S.convs.filter(c=>!c.meta?.assignee):S.convs;
+  src.forEach(conv=>{
+    const col=colOf(conv);
+    if(col&&(ff==='all'||ff==='unassigned'||col.id===ff))groups[col.id].push(conv);
+  });
   COLUMNS.forEach(col=>{
     const body=document.querySelector(`[data-body="${col.id}"]`);
     const colEl=document.querySelector(`[data-col="${col.id}"]`);
@@ -479,7 +487,7 @@ async function openChat(convId){
     $('messages-area').innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:60px;color:var(--text-3)"><div class="spinner-sm"></div>Carregando...</div>`;
   }
   await loadMsgs(convId);
-  S.msgTimer=setInterval(()=>loadMsgs(convId),3000);
+  S.msgTimer=setInterval(()=>loadMsgs(convId),2000);
 }
 
 function refreshStageBtns(conv){
@@ -1214,7 +1222,7 @@ function bindEvents(){
   $('ldd-apply').addEventListener('click',applyLabels);
 
   /* Config */
-  $('config-btn').addEventListener('click',openConfig);
+  $('config-btn')?.addEventListener('click',openConfig);
   $('config-close').addEventListener('click',closeConfig);
   $('config-panel').addEventListener('click',e=>{if(e.target===$('config-panel'))closeConfig();});
 
@@ -1271,6 +1279,48 @@ function bindEvents(){
     e.stopPropagation(); // evita conflito com data-panel
     openConfig();
   });
+}
+
+/* ════════════════════════════════════════════════
+   FUNNEL FILTER + UPDATE TIMER
+════════════════════════════════════════════════ */
+function initFunnelFilter(){
+  QA('.sb-filter[data-funnel]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      QA('.sb-filter').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      S.funnelFilter=btn.dataset.funnel;
+      renderBoard();
+    });
+  });
+  $('filter-agent')?.addEventListener('change',()=>loadConvs(true));
+}
+
+function updateFunnelCounts(){
+  const counts={};COLUMNS.forEach(c=>counts[c.id]=0);
+  let unasgn=0;
+  S.convs.forEach(conv=>{
+    const col=colOf(conv);if(col)counts[col.id]=(counts[col.id]||0)+1;
+    if(!conv.meta?.assignee)unasgn++;
+  });
+  const set=(id,v)=>{const el=$(id);if(!el)return;el.textContent=v||'';v?el.classList.add('vis'):el.classList.remove('vis');};
+  set('fc-all',S.convs.length);
+  set('fc-lead',counts['lead']);
+  set('fc-neg',counts['negociacao']);
+  set('fc-venda',counts['lancar-venda']);
+  set('fc-pago',counts['pago']);
+  set('fc-unasgn',unasgn||'');
+}
+
+function startUpdateTimer(){
+  setInterval(()=>{
+    if(!S.lastUpdateTime)return;
+    const s=Math.floor((Date.now()-S.lastUpdateTime)/1000);
+    const el=$('refresh-label');if(!el)return;
+    el.textContent=s<5?'ao vivo':s<60?`há ${s}s`:`há ${Math.floor(s/60)}min`;
+    const dot=$('conn-dot');
+    if(dot)dot.classList.toggle('err',s>30);
+  },1000);
 }
 
 /* ════════════════════════════════════════════════

@@ -118,6 +118,70 @@
       </div>
     </div>
 
+    <!-- FUNIL DE VENDAS -->
+    <div class="sb-funnel-section">
+      <div class="sb-sep-lbl"><span>Funil</span></div>
+      <div class="sb-funnel" id="sb-funnel">
+        <button class="sb-filter active" data-funnel="all" title="Todos">
+          <span class="sb-icon sb-filter-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </span>
+          <span class="sb-label">Todos</span>
+          <span class="sf-badge" id="fc-all"></span>
+        </button>
+        <button class="sb-filter" data-funnel="lead" title="Leads">
+          <span class="sb-icon sb-filter-icon">📣</span>
+          <span class="sb-label">Leads</span>
+          <span class="sf-badge" id="fc-lead"></span>
+        </button>
+        <button class="sb-filter" data-funnel="negociacao" title="Negociação">
+          <span class="sb-icon sb-filter-icon">🤝</span>
+          <span class="sb-label">Negociação</span>
+          <span class="sf-badge" id="fc-neg"></span>
+        </button>
+        <button class="sb-filter" data-funnel="lancar-venda" title="Venda">
+          <span class="sb-icon sb-filter-icon">🚀</span>
+          <span class="sb-label">Venda</span>
+          <span class="sf-badge" id="fc-venda"></span>
+        </button>
+        <button class="sb-filter" data-funnel="pago" title="Pagos">
+          <span class="sb-icon sb-filter-icon">✅</span>
+          <span class="sb-label">Pagos</span>
+          <span class="sf-badge" id="fc-pago"></span>
+        </button>
+        <button class="sb-filter" data-funnel="unassigned" title="Não atribuídas">
+          <span class="sb-icon sb-filter-icon">⚠️</span>
+          <span class="sb-label">Não atrib.</span>
+          <span class="sf-badge sf-badge-warn" id="fc-unasgn"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- VENDEDOR (supervisor) -->
+    <div class="sb-agent-outer" id="sb-agent-section">
+      <div class="sb-sep-lbl"><span>Vendedor</span></div>
+      <div class="sb-agent-wrap">
+        <select id="filter-agent" class="sb-agent-sel">
+          <option value="">Todos os vendedores</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ATUALIZAÇÃO -->
+    <div class="sb-refresh-outer">
+      <button class="sb-refresh-btn" id="refresh-btn" title="Atualizar agora">
+        <svg class="sb-refresh-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.46-4.47"/>
+        </svg>
+        <span class="sb-label">Atualizar agora</span>
+      </button>
+      <div class="sb-refresh-info">
+        <span class="sb-conn-dot" id="conn-dot"></span>
+        <span class="sb-refresh-lbl" id="refresh-label">—</span>
+        <span class="sb-total-lbl-sb" id="tb-total">—</span>
+      </div>
+    </div>
+
     <div class="sb-spacer"></div>
 
     <!-- Footer: user + theme -->
@@ -158,26 +222,6 @@
   <!-- MAIN CONTENT -->
   <div id="main-content">
 
-    <!-- SUBHEADER -->
-    <div id="subheader">
-      <div class="sh-left">
-        <span class="sh-total-lbl">Total:</span>
-        <strong id="tb-total" class="sh-total-val">—</strong>
-      </div>
-      <div class="sh-right">
-        <div id="sh-filter-wrap" class="sh-filter-wrap">
-          <label class="sh-filter-lbl">Vendedor</label>
-          <select id="filter-agent"><option value="">Todos</option></select>
-        </div>
-        <span class="sh-refresh-txt">↺ <span id="refresh-label">--:--</span></span>
-        <button class="sh-btn" id="refresh-btn" title="Atualizar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.46-4.47"/>
-          </svg>
-        </button>
-        <button class="sh-btn sh-btn-cfg" id="config-btn" style="display:none" title="Configurações">⚙️</button>
-      </div>
-    </div>
 
     <!-- PANELS -->
     <div id="panels">
@@ -459,6 +503,7 @@
 <div id="toast"></div>
 <div id="lightbox"><button id="lb-close">✕</button><img id="lb-img" alt=""></div>
 <button id="theme-btn" style="display:none;position:fixed;bottom:-999px"></button>
+<button id="config-btn" style="display:none;position:fixed;bottom:-999px"></button>
 <!-- hd-user-role hidden compat -->
 <span id="hd-user-role" style="display:none"></span>
 
