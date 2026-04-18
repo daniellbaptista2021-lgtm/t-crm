@@ -224,10 +224,47 @@ async function tryAutoLogin(){
   if(!token||!user)return showLogin();
   S.token=token;S.user=JSON.parse(user);
   try{
-    const d=await api('/auth/me');if(!d)return;
+    const r=await fetch(`${API}/auth/me`,{headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'}});
+    if(r.status===401){doLogout();return;}
+    if(!r.ok){
+      /* Servidor temporariamente indisponível — usa dados em cache e tenta reconectar */
+      applyUserUI();showApp();
+      toast('Reconectando ao servidor...','');
+      await bootAppOffline();
+      scheduleReconnect();
+      return;
+    }
+    const d=await r.json();
     S.user=d.user;localStorage.setItem('tcrm_user',JSON.stringify(S.user));
     applyUserUI();showApp();await bootApp();
-  }catch{doLogout();}
+  }catch{
+    /* Sem rede — tenta de novo em 3s em vez de fazer logout */
+    applyUserUI();showApp();
+    toast('Sem conexão — tentando reconectar...','');
+    await bootAppOffline();
+    scheduleReconnect();
+  }
+}
+
+async function bootAppOffline(){
+  buildBoard();populateDashAgentFilter();initFunnelFilter();initBoardNav();startUpdateTimer();
+}
+
+function scheduleReconnect(){
+  let attempts=0;
+  const interval=setInterval(async()=>{
+    attempts++;
+    try{
+      const r=await fetch(`${API}/auth/me`,{headers:{'Authorization':`Bearer ${S.token}`,'Content-Type':'application/json'}});
+      if(r.status===401){clearInterval(interval);doLogout();return;}
+      if(r.ok){
+        clearInterval(interval);
+        toast('✓ Reconectado!','ok');
+        await bootApp();
+      }
+    }catch{}
+    if(attempts>=20)clearInterval(interval); /* desiste após ~60s */
+  },3000);
 }
 
 $('login-btn').addEventListener('click',doLogin);
@@ -327,7 +364,10 @@ async function loadConvs(showLoader=false){
     S.lastUpdateTime=Date.now();
     const tot=$('tb-total');if(tot)tot.textContent=`${S.convs.length} conv.`;
     updateFunnelCounts();
-  }catch(err){if(showLoader)toast('Erro: '+err.message,'err');}
+  }catch(err){
+    if(showLoader)toast('Erro ao carregar conversas: '+err.message,'err');
+    const dot=$('conn-dot');if(dot)dot.classList.add('err');
+  }
   finally{$('board-loading').classList.add('hidden');}
 }
 
