@@ -325,6 +325,7 @@ function hasChanged(newList){
 
 function buildBoard(){
   $('board').innerHTML='';
+  const skelHtml=Array(3).fill('<div class="card-skeleton"></div>').join('');
   COLUMNS.forEach(col=>{
     const el=document.createElement('div');
     el.className='col';el.dataset.col=col.id;
@@ -334,13 +335,18 @@ function buildBoard(){
         <span class="col-title">${col.label}</span>
         <span class="col-count">0</span>
       </div>
-      <div class="col-body" data-body="${col.id}"></div>`;
+      <div class="col-body" data-body="${col.id}">${skelHtml}</div>`;
     $('board').appendChild(el);
   });
   setupDrop();
 }
 
 const LAZY_PAGE=20;
+
+/* Fingerprint do card — fillCard só roda quando algo muda de verdade */
+function cardSnap(conv){
+  return `${conv.last_activity_at}|${conv.unread_count}|${conv.meta?.assignee?.id||''}|${(conv.labels||[]).join(',')}`;
+}
 
 function renderBoard(){
   const ff=S.funnelFilter||'all';
@@ -355,22 +361,49 @@ function renderBoard(){
     const colEl=document.querySelector(`[data-col="${col.id}"]`);
     if(!body||!colEl)return;
     const convos=groups[col.id];
-    colEl.querySelector('.col-count').textContent=convos.length;
+
+    /* Atualiza contador apenas quando mudou */
+    const countEl=colEl.querySelector('.col-count');
+    const newCount=String(convos.length);
+    if(countEl.textContent!==newCount)countEl.textContent=newCount;
+
+    /* Remove skeletons na primeira renderização real */
+    body.querySelectorAll('.card-skeleton').forEach(s=>s.remove());
+
+    /* Map de cards existentes — O(1) lookup em vez de querySelector por card */
+    const cardMap=new Map([...body.querySelectorAll('.card')].map(c=>[c.dataset.id,c]));
+
+    /* Remove os que saíram da coluna */
     const newIds=new Set(convos.map(c=>String(c.id)));
-    [...body.querySelectorAll('.card')].forEach(c=>{if(!newIds.has(c.dataset.id))c.remove();});
+    cardMap.forEach((card,id)=>{if(!newIds.has(id))card.remove();});
+
     if(!convos.length){
       if(!body.querySelector('.col-empty'))body.innerHTML=`<div class="col-empty"><div class="col-empty-icon">📭</div>Nenhum cliente aqui</div>`;
       return;
     }
     body.querySelector('.col-empty')?.remove();
     body._allConvs=convos; body._col=col;
+    /* Cards restantes após remoções — base para lazy loading */
     const already=body.querySelectorAll('.card').length;
     const toShow=Math.min(Math.max(already,LAZY_PAGE),convos.length);
     convos.slice(0,toShow).forEach(conv=>{
       const id=String(conv.id);
-      let card=body.querySelector(`.card[data-id="${id}"]`);
-      if(!card){card=mkCard(conv,col);body.appendChild(card);}
-      else fillCard(card,conv,col);
+      let card=cardMap.get(id);
+      if(!card){
+        card=mkCard(conv,col);
+        body.appendChild(card);
+      } else {
+        /* Re-renderiza só se dados mudaram — snap evita innerHTML desnecessário */
+        const snap=cardSnap(conv);
+        if(card.dataset.snap!==snap){
+          fillCard(card,conv,col);
+          card.dataset.snap=snap;
+        }
+        /* Atualiza active sem tocar innerHTML */
+        const isActive=String(conv.id)===String(S.activeId);
+        if(card.classList.contains('active')!==isActive)
+          card.classList.toggle('active',isActive);
+      }
     });
     if(!body._scrollBound){
       body._scrollBound=true;
@@ -391,7 +424,9 @@ function renderBoard(){
 
 function mkCard(conv,col){
   const card=document.createElement('div');
-  card.className='card';card.dataset.id=conv.id;
+  card.className='card';
+  card.dataset.id=conv.id;
+  card.dataset.snap=cardSnap(conv);
   card.draggable=true;
   card.addEventListener('dragstart',onDragStart);
   card.addEventListener('click',()=>openChat(conv.id));
@@ -468,8 +503,10 @@ function setupDrop(){
    CHAT
 ════════════════════════════════════════════════ */
 async function openChat(convId){
+  /* Atualiza active em 2 elementos, não em todos os cards do DOM */
+  document.querySelector('.card.active')?.classList.remove('active');
+  document.querySelector(`.card[data-id="${String(convId)}"]`)?.classList.add('active');
   S.activeId=convId;
-  QA('.card').forEach(c=>c.classList.toggle('active',c.dataset.id===String(convId)));
   const conv=S.convs.find(c=>c.id==convId);if(!conv)return;
   const name=conv.meta?.sender?.name||'Contato';
   const ph=phone(conv)||'—';
