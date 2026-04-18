@@ -546,7 +546,9 @@ app.get('/dashboard', auth, async (req, res) => {
 ═══════════════════════════════════════════════════ */
 app.get('/health', async (req, res) => {
   try {
-    await cw('/profile');
+    const url = `${CHATWOOT_URL}/api/v1/profile?api_access_token=${encodeURIComponent(CHATWOOT_TOKEN)}`;
+    const r = await fetcher(url, { headers: { 'api_access_token': CHATWOOT_TOKEN } });
+    if (!r.ok) throw new Error(`Chatwoot ${r.status}`);
     res.json({ ok: true, chatwoot: CHATWOOT_URL, account: ACCOUNT_ID });
   } catch (err) {
     res.status(503).json({ ok: false, error: err.message, chatwoot: CHATWOOT_URL });
