@@ -47,7 +47,7 @@ const S = {
   token: null, user: null,
   convs: [], convCache: {}, msgCache: {},
   msgOldestId: {}, msgHasMore: {}, msgLoading: false,
-  myAgentId: null, boardPage: 0,
+  myAgentId: null, visitedCols: new Set(),
   agents: [], allLabels: [], schedules: [],
   activeId: null, pendingFile: null, selLabels: [],
   isRec: false, mediaRec: null, audioChunks: [],
@@ -247,7 +247,7 @@ async function tryAutoLogin(){
 }
 
 async function bootAppOffline(){
-  buildBoard();populateDashAgentFilter();initFunnelFilter();initBoardNav();startUpdateTimer();
+  buildBoard();populateDashAgentFilter();initFunnelFilter();startUpdateTimer();
 }
 
 function scheduleReconnect(){
@@ -299,7 +299,6 @@ async function bootApp(){
   buildBoard();
   populateDashAgentFilter();
   initFunnelFilter();
-  initBoardNav();
   startUpdateTimer();
   await Promise.all([loadAgents(),loadLabels(),loadSchedules()]);
   await loadConvs(true);
@@ -383,7 +382,8 @@ function hasChanged(newList){
 
 function buildBoard(){
   $('board').innerHTML='';
-  const skelHtml=Array(3).fill('<div class="card-skeleton"></div>').join('');
+  /* Primeiras 3 colunas já nascem "visitadas" — carregam na hora */
+  S.visitedCols=new Set(COLUMNS.slice(0,3).map(c=>c.id));
   COLUMNS.forEach(col=>{
     const el=document.createElement('div');
     el.className='col';el.dataset.col=col.id;
@@ -393,54 +393,46 @@ function buildBoard(){
         <span class="col-title">${col.label}</span>
         <span class="col-count">0</span>
       </div>
-      <div class="col-body" data-body="${col.id}">${skelHtml}</div>`;
+      <div class="col-body" data-body="${col.id}"></div>`;
     $('board').appendChild(el);
   });
   setupDrop();
-  setColPage(0);
+  initColObserver();
 }
 
 const LAZY_PAGE=5;
-const COLS_PER_PAGE=3;
 
-/* ── Navegação de colunas (3 por página) ─────────── */
-function pageOfCol(colId){
-  const idx=COLUMNS.findIndex(c=>c.id===colId);
-  return idx>=0?Math.floor(idx/COLS_PER_PAGE):0;
-}
-
-function setColPage(page){
-  const total=Math.ceil(COLUMNS.length/COLS_PER_PAGE);
-  S.boardPage=Math.max(0,Math.min(page,total-1));
-  COLUMNS.forEach((col,i)=>{
-    const el=document.querySelector(`[data-col="${col.id}"]`);
-    if(el)el.style.display=Math.floor(i/COLS_PER_PAGE)===S.boardPage?'':'none';
-  });
-  const prev=$('board-prev'),next=$('board-next');
-  if(prev)prev.disabled=S.boardPage===0;
-  if(next)next.disabled=S.boardPage>=total-1;
-  /* Pontos de página */
-  const dotsEl=$('board-page-dots');
-  if(dotsEl){
-    dotsEl.innerHTML='';
-    for(let i=0;i<total;i++){
-      const d=document.createElement('button');
-      d.className='bpd'+(i===S.boardPage?' active':'');
-      d.title=`Página ${i+1}`;
-      d.addEventListener('click',()=>setColPage(i));
-      dotsEl.appendChild(d);
+/* ── Lazy load de colunas ao entrar na viewport (scroll horizontal) ─── */
+let _colObserver=null;
+function initColObserver(){
+  if(_colObserver)_colObserver.disconnect();
+  const boardEl=$('board');
+  if(!boardEl||!('IntersectionObserver' in window)){
+    /* Fallback: visita todas */
+    COLUMNS.forEach(c=>S.visitedCols.add(c.id));
+    return;
+  }
+  _colObserver=new IntersectionObserver(entries=>{
+    let added=false;
+    for(const entry of entries){
+      if(entry.isIntersecting){
+        const id=entry.target.dataset.col;
+        if(id && !S.visitedCols.has(id)){S.visitedCols.add(id);added=true;}
+      }
     }
-  }
-  const lbl=$('board-page-label');
-  if(lbl){
-    const start=S.boardPage*COLS_PER_PAGE;
-    lbl.textContent=COLUMNS.slice(start,start+COLS_PER_PAGE).map(c=>c.label).join(' · ');
-  }
+    if(added && S.convs.length)renderBoard();
+  },{root:boardEl,threshold:0.2});
+  document.querySelectorAll('.col').forEach(el=>_colObserver.observe(el));
 }
 
-function initBoardNav(){
-  $('board-prev')?.addEventListener('click',()=>setColPage(S.boardPage-1));
-  $('board-next')?.addEventListener('click',()=>setColPage(S.boardPage+1));
+/* Rola o board horizontalmente até a coluna (para funnel filter) */
+function scrollToCol(colId){
+  const el=document.querySelector(`[data-col="${colId}"]`);
+  const board=$('board');
+  if(!el||!board)return;
+  const left=el.offsetLeft - board.offsetLeft - 6;
+  board.scrollTo({left:Math.max(0,left),behavior:'smooth'});
+  S.visitedCols.add(colId);
 }
 
 /* Carrega todo histórico (botão "Clique aqui para carregar histórico") */
@@ -479,6 +471,19 @@ function renderBoard(){
     const countEl=colEl.querySelector('.col-count');
     const newCount=String(convos.length);
     if(countEl.textContent!==newCount)countEl.textContent=newCount;
+
+    /* Coluna ainda não visitada — mostra placeholder "Arraste para carregar" */
+    if(!S.visitedCols.has(col.id)){
+      if(!body.querySelector('.col-unloaded')){
+        body.innerHTML=`<div class="col-unloaded"><div class="col-unloaded-icon">📦</div>Arraste para carregar<br>${convos.length} cliente(s)</div>`;
+      } else {
+        body.querySelector('.col-unloaded').innerHTML=`<div class="col-unloaded-icon">📦</div>Arraste para carregar<br>${convos.length} cliente(s)`;
+      }
+      return;
+    }
+
+    /* Remove placeholder quando a coluna for visitada */
+    body.querySelector('.col-unloaded')?.remove();
 
     /* Remove skeletons na primeira renderização real */
     body.querySelectorAll('.card-skeleton').forEach(s=>s.remove());
@@ -1543,11 +1548,16 @@ function initFunnelFilter(){
       QA('.sb-filter').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       S.funnelFilter=btn.dataset.funnel;
-      renderBoard();
-      /* Navega para a página que contém a coluna do filtro selecionado */
       const ff=btn.dataset.funnel;
-      if(ff==='all'||ff==='unassigned') setColPage(0);
-      else setColPage(pageOfCol(ff));
+      /* Scroll horizontal até a coluna filtrada */
+      if(ff && ff!=='all' && ff!=='unassigned'){
+        S.visitedCols.add(ff);
+        renderBoard();
+        scrollToCol(ff);
+      } else {
+        renderBoard();
+        $('board')?.scrollTo({left:0,behavior:'smooth'});
+      }
     });
   });
 }
