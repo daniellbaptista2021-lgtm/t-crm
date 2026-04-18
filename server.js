@@ -262,7 +262,10 @@ app.get('/conversations', auth, async (req, res) => {
    MESSAGES
 ═══════════════════════════════════════════════════ */
 app.get('/messages/:id', auth, async (req, res) => {
-  try { res.json(await cw(`/conversations/${req.params.id}/messages`)); }
+  try {
+    const qs = req.query.before ? `?before=${encodeURIComponent(req.query.before)}` : '';
+    res.json(await cw(`/conversations/${req.params.id}/messages${qs}`));
+  }
   catch (err) { console.error('[GET /messages]', err.message); res.status(500).json({ error: err.message }); }
 });
 

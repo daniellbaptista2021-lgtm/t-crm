@@ -500,6 +500,16 @@ body {
 .message.out .msg-bub.has-audio .msg-time { color: var(--text-3); }
 .msg-file  { display: flex; align-items: center; gap: 7px; padding: 7px 9px; background: rgba(0,0,0,.08); border-radius: 8px; font-size: 12px; cursor: pointer; text-decoration: none; color: inherit; }
 
+/* Message skeletons — placeholders enquanto carrega */
+.msg-skel-wrap { display: flex; flex-direction: column; gap: 10px; padding: 12px; flex: 1; }
+.msg-skel { height: 42px; border-radius: 14px; background: linear-gradient(90deg,var(--border2) 25%,var(--border) 50%,var(--border2) 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; }
+.msg-skel.in  { align-self: flex-start; }
+.msg-skel.out { align-self: flex-end; }
+
+/* Indicadores de histórico */
+.msg-no-more { text-align: center; font-size: 11px; color: var(--text-4); padding: 10px 0 6px; user-select: none; }
+.msg-loading-bar { display: flex; justify-content: center; padding: 8px 0; }
+
 /* Audio recorder */
 #rec-ui { padding: 11px 13px; border-top: 1px solid var(--border); background: var(--surface2); display: none; flex-direction: column; gap: 8px; flex-shrink: 0; }
 #rec-ui.on { display: flex; }

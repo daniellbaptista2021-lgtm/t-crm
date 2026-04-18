@@ -46,6 +46,7 @@ const CLRS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#9333
 const S = {
   token: null, user: null,
   convs: [], convCache: {}, msgCache: {},
+  msgOldestId: {}, msgHasMore: {}, msgLoading: false,
   agents: [], allLabels: [], schedules: [],
   activeId: null, pendingFile: null, selLabels: [],
   isRec: false, mediaRec: null, audioChunks: [],
@@ -517,13 +518,27 @@ async function openChat(convId){
   refreshStageBtns(conv);initLddDrop(conv);
   $('chat-panel').classList.add('open');
   clearInterval(S.msgTimer);
-  $('messages-area').innerHTML='';
-  if(S.msgCache[convId]){
-    renderMsgs(S.msgCache[convId]);
+  initMsgScroll(convId);
+
+  const cached=S.msgCache[convId];
+  if(cached && cached.length>0){
+    /* Cache existente: mostra instantaneamente, sincroniza em segundo plano */
+    $('messages-area').innerHTML='';
+    renderMsgs(cached);
+    loadMsgs(convId); /* sem await — não bloqueia a UI */
   } else {
-    $('messages-area').innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:60px;color:var(--text-3)"><div class="spinner-sm"></div>Carregando...</div>`;
+    /* Sem cache: skeleton animado enquanto carrega */
+    $('messages-area').innerHTML=`
+      <div class="msg-skel-wrap">
+        <div class="msg-skel in" style="width:65%"></div>
+        <div class="msg-skel out" style="width:50%"></div>
+        <div class="msg-skel in" style="width:75%"></div>
+        <div class="msg-skel out" style="width:55%"></div>
+        <div class="msg-skel in" style="width:60%"></div>
+        <div class="msg-skel out" style="width:45%"></div>
+      </div>`;
+    await loadMsgs(convId);
   }
-  await loadMsgs(convId);
   S.msgTimer=setInterval(()=>loadMsgs(convId),2000);
 }
 
@@ -588,14 +603,102 @@ async function applyLabels(){
 async function loadMsgs(convId){
   try{
     const d=await api(`/messages/${convId}`);if(!d)return;
-    const msgs=d?.payload||[];
+    const fresh=d?.payload||[];
+    if(!fresh.length)return;
     const cached=S.msgCache[convId]||[];
     if(cached.some(m=>String(m.id).startsWith('temp_')))return;
-    if(msgs[msgs.length-1]?.id!==cached[cached.length-1]?.id||msgs.length!==cached.length){
-      S.msgCache[convId]=msgs;
-      if(String(S.activeId)===String(convId))renderMsgs(msgs);
+
+    /* Rastrear ID mais antigo para paginação (configura apenas uma vez) */
+    if(!S.msgOldestId[convId]){
+      const sorted=[...fresh].sort((a,b)=>a.id-b.id);
+      S.msgOldestId[convId]=sorted[0].id;
+      S.msgHasMore[convId]=fresh.length>=20;
     }
+
+    /* Merge: preserva msgs antigas já carregadas + atualiza com as novas */
+    const freshIds=new Set(fresh.map(m=>String(m.id)));
+    const older=cached.filter(m=>!freshIds.has(String(m.id))&&!String(m.id).startsWith('temp_'));
+    const merged=[...older,...fresh].sort((a,b)=>a.created_at-b.created_at);
+
+    /* Só re-renderiza se houve mudança real */
+    const lastFresh=fresh[fresh.length-1]?.id;
+    const lastCached=cached.filter(m=>!String(m.id).startsWith('temp_')).pop()?.id;
+    if(lastFresh===lastCached && merged.length===cached.length)return;
+
+    S.msgCache[convId]=merged;
+    if(String(S.activeId)===String(convId))renderMsgs(merged);
   }catch{}
+}
+
+/* Carrega histórico antigo via scroll — usa ?before= passado ao Chatwoot */
+async function loadMoreMsgs(convId){
+  if(!S.msgHasMore[convId]||!S.msgOldestId[convId]||S.msgLoading)return;
+  S.msgLoading=true;
+  const area=$('messages-area');
+  const bar=document.createElement('div');
+  bar.className='msg-loading-bar';
+  bar.innerHTML='<div class="spinner-sm"></div>';
+  area.prepend(bar);
+  try{
+    const d=await api(`/messages/${convId}?before=${S.msgOldestId[convId]}`);
+    bar.remove();
+    if(!d){S.msgLoading=false;return;}
+    const older=d?.payload||[];
+    if(!older.length){
+      S.msgHasMore[convId]=false;
+      if(!area.querySelector('.msg-no-more')){
+        const el=document.createElement('div');
+        el.className='msg-no-more';el.textContent='Início da conversa';
+        area.prepend(el);
+      }
+      S.msgLoading=false;return;
+    }
+    const sortedOlder=[...older].sort((a,b)=>a.id-b.id);
+    S.msgOldestId[convId]=sortedOlder[0].id;
+    S.msgHasMore[convId]=older.length>=20;
+    const existing=S.msgCache[convId]||[];
+    const existingIds=new Set(existing.map(m=>String(m.id)));
+    const newOld=sortedOlder.filter(m=>!existingIds.has(String(m.id)));
+    S.msgCache[convId]=[...newOld,...existing].sort((a,b)=>a.created_at-b.created_at);
+    if(String(S.activeId)===String(convId))prependMsgs(newOld,area);
+  }catch{bar.remove();}
+  S.msgLoading=false;
+}
+
+/* Prepend msgs antigas preservando posição de scroll */
+function prependMsgs(msgs,area){
+  if(!msgs.length)return;
+  const prevScrollHeight=area.scrollHeight;
+  const prevScrollTop=area.scrollTop;
+  const sorted=[...msgs].sort((a,b)=>a.created_at-b.created_at);
+  const existingIds=new Set([...area.querySelectorAll('[data-msg-id]')].map(e=>e.dataset.msgId));
+  const frag=document.createDocumentFragment();
+  let lastDate='';
+  sorted.forEach(msg=>{
+    if(existingIds.has(String(msg.id)))return;
+    const dl=fmtD(msg.created_at);
+    if(dl!==lastDate){
+      const d=document.createElement('div');d.className='msg-div';d.textContent=dl;
+      frag.appendChild(d);lastDate=dl;
+    }
+    frag.appendChild(buildMsg(msg));
+  });
+  area.insertBefore(frag,area.firstChild);
+  /* Restaura posição de scroll para o usuário não "pular" */
+  area.scrollTop=prevScrollTop+(area.scrollHeight-prevScrollHeight);
+}
+
+/* Reverse infinite scroll — dispara loadMoreMsgs ao rolar para o topo */
+function initMsgScroll(convId){
+  const area=$('messages-area');
+  if(area._msgScrollConvId===convId)return;
+  if(area._msgScrollHandler)area.removeEventListener('scroll',area._msgScrollHandler);
+  area._msgScrollConvId=convId;
+  area._msgScrollHandler=()=>{
+    if(area.scrollTop<80&&String(S.activeId)===String(convId))
+      loadMoreMsgs(convId);
+  };
+  area.addEventListener('scroll',area._msgScrollHandler,{passive:true});
 }
 
 function renderMsgs(msgs){
