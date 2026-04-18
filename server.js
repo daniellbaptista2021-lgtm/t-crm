@@ -116,6 +116,22 @@ async function cw(urlPath, options = {}) {
 /* Cache em memória para conversas — TTL 8s */
 const convsCache = {};
 
+/* Cache de agentes por email — TTL 60s */
+let _agentEmailCache = null;
+let _agentEmailCacheTs = 0;
+async function getAgentIdByEmail(email) {
+  const now = Date.now();
+  if (!_agentEmailCache || now - _agentEmailCacheTs > 60000) {
+    try {
+      const list = await cw('/agents');
+      const agents = Array.isArray(list) ? list : (list?.payload || []);
+      _agentEmailCache = Object.fromEntries(agents.map(a => [a.email, String(a.id)]));
+      _agentEmailCacheTs = now;
+    } catch { _agentEmailCache = _agentEmailCache || {}; }
+  }
+  return _agentEmailCache[email] || null;
+}
+
 /* Busca todas as conversas com paginação paralela + cache */
 async function fetchAllConvs(assigneeId) {
   const cacheKey = assigneeId || '__all__';
@@ -247,10 +263,13 @@ app.delete('/users/:id', auth, role('supervisor'), (req, res) => {
 ═══════════════════════════════════════════════════ */
 app.get('/conversations', auth, async (req, res) => {
   try {
-    const { assignee_id } = req.query;
-    // Vendedor só vê próprias conversas
-    const filterId = (req.user.role === 'vendedor' && !assignee_id) ? null : assignee_id;
-    const all = await fetchAllConvs(filterId || undefined);
+    let { assignee_id } = req.query;
+    /* Vendedor sempre filtra por si mesmo — lookup por email no Chatwoot */
+    if (req.user.role === 'vendedor') {
+      const myId = await getAgentIdByEmail(req.user.email);
+      if (myId) assignee_id = myId;
+    }
+    const all = await fetchAllConvs(assignee_id || undefined);
     res.json({ conversations: all });
   } catch (err) {
     console.error('[GET /conversations]', err.message);

@@ -47,6 +47,7 @@ const S = {
   token: null, user: null,
   convs: [], convCache: {}, msgCache: {},
   msgOldestId: {}, msgHasMore: {}, msgLoading: false,
+  myAgentId: null,
   agents: [], allLabels: [], schedules: [],
   activeId: null, pendingFile: null, selLabels: [],
   isRec: false, mediaRec: null, audioChunks: [],
@@ -285,6 +286,15 @@ async function loadAgents(){
     sel.innerHTML='<option value="">Todos</option>';
     S.agents.forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.name;sel.appendChild(o);});
     populateDashAgentFilter();
+    /* Vendedor: encontra o próprio agente no Chatwoot pelo email */
+    if(S.user?.role==='vendedor'){
+      const me=S.agents.find(a=>a.email===S.user.email)
+               ||S.agents.find(a=>a.name?.toLowerCase()===S.user.name?.toLowerCase());
+      if(me){
+        S.myAgentId=me.id;
+        sel.value=me.id; /* mantém select sincronizado (seção oculta) */
+      }
+    }
   }catch{}
 }
 async function loadLabels(){
@@ -297,7 +307,10 @@ async function loadLabels(){
 async function loadConvs(showLoader=false){
   if(showLoader)$('board-loading').classList.remove('hidden');
   try{
-    const agentId=$('filter-agent').value;
+    /* Vendedor sempre usa seu próprio ID; supervisor usa o dropdown */
+    const agentId= S.user?.role==='vendedor' && S.myAgentId
+      ? S.myAgentId
+      : $('filter-agent').value;
     const d=await api('/conversations'+(agentId?`?assignee_id=${agentId}`:''));
     if(!d)return;
     const newConvs=d.conversations||[];
