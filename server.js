@@ -520,6 +520,18 @@ app.get('/dashboard', auth, async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════
+   HEALTH CHECK
+═══════════════════════════════════════════════════ */
+app.get('/health', async (req, res) => {
+  try {
+    await cw('/profile');
+    res.json({ ok: true, chatwoot: CHATWOOT_URL, account: ACCOUNT_ID });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: err.message, chatwoot: CHATWOOT_URL });
+  }
+});
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
 app.listen(PORT, () => {

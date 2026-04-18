@@ -247,7 +247,7 @@ async function doLogin(){
     localStorage.setItem('tcrm_token',S.token);localStorage.setItem('tcrm_user',JSON.stringify(S.user));
     applyUserUI();showApp();await bootApp();
   }catch(err){
-    errEl.textContent='Erro de conexão. Verifique se o servidor está rodando em localhost:3000.';
+    errEl.textContent='Erro de conexão com o servidor. Verifique sua internet e tente novamente.';
     errEl.classList.add('show');
   }finally{btn.disabled=false;$('login-btn-text').textContent='Entrar';}
 }
@@ -353,7 +353,7 @@ function renderBoard(){
   COLUMNS.forEach(col=>{
     const body=document.querySelector(`[data-body="${col.id}"]`);
     const colEl=document.querySelector(`[data-col="${col.id}"]`);
-    if(!body)return;
+    if(!body||!colEl)return;
     const convos=groups[col.id];
     colEl.querySelector('.col-count').textContent=convos.length;
     const newIds=new Set(convos.map(c=>String(c.id)));
@@ -1296,7 +1296,6 @@ function initFunnelFilter(){
       renderBoard();
     });
   });
-  $('filter-agent')?.addEventListener('change',()=>loadConvs(true));
 }
 
 function updateFunnelCounts(){
