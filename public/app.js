@@ -47,7 +47,7 @@ const S = {
   token: null, user: null,
   convs: [], convCache: {}, msgCache: {},
   msgOldestId: {}, msgHasMore: {}, msgLoading: false,
-  myAgentId: null,
+  myAgentId: null, boardPage: 0,
   agents: [], allLabels: [], schedules: [],
   activeId: null, pendingFile: null, selLabels: [],
   isRec: false, mediaRec: null, audioChunks: [],
@@ -262,6 +262,7 @@ async function bootApp(){
   buildBoard();
   populateDashAgentFilter();
   initFunnelFilter();
+  initBoardNav();
   startUpdateTimer();
   await Promise.all([loadAgents(),loadLabels(),loadSchedules()]);
   await loadConvs(true);
@@ -269,6 +270,9 @@ async function bootApp(){
   S.boardTimer=setInterval(()=>loadConvs(false),5000);
   updateScheduleBadge();
   initScheduleWorker();
+  /* Auto-abre a primeira conversa de Lead */
+  const firstLead=S.convs.find(c=>colOf(c)?.id==='lead');
+  if(firstLead)setTimeout(()=>openChat(firstLead.id),120);
 }
 
 async function loadSchedules(){
@@ -353,9 +357,64 @@ function buildBoard(){
     $('board').appendChild(el);
   });
   setupDrop();
+  setColPage(0);
 }
 
-const LAZY_PAGE=20;
+const LAZY_PAGE=5;
+const COLS_PER_PAGE=3;
+
+/* ── Navegação de colunas (3 por página) ─────────── */
+function pageOfCol(colId){
+  const idx=COLUMNS.findIndex(c=>c.id===colId);
+  return idx>=0?Math.floor(idx/COLS_PER_PAGE):0;
+}
+
+function setColPage(page){
+  const total=Math.ceil(COLUMNS.length/COLS_PER_PAGE);
+  S.boardPage=Math.max(0,Math.min(page,total-1));
+  COLUMNS.forEach((col,i)=>{
+    const el=document.querySelector(`[data-col="${col.id}"]`);
+    if(el)el.style.display=Math.floor(i/COLS_PER_PAGE)===S.boardPage?'':'none';
+  });
+  const prev=$('board-prev'),next=$('board-next');
+  if(prev)prev.disabled=S.boardPage===0;
+  if(next)next.disabled=S.boardPage>=total-1;
+  /* Pontos de página */
+  const dotsEl=$('board-page-dots');
+  if(dotsEl){
+    dotsEl.innerHTML='';
+    for(let i=0;i<total;i++){
+      const d=document.createElement('button');
+      d.className='bpd'+(i===S.boardPage?' active':'');
+      d.title=`Página ${i+1}`;
+      d.addEventListener('click',()=>setColPage(i));
+      dotsEl.appendChild(d);
+    }
+  }
+  const lbl=$('board-page-label');
+  if(lbl){
+    const start=S.boardPage*COLS_PER_PAGE;
+    lbl.textContent=COLUMNS.slice(start,start+COLS_PER_PAGE).map(c=>c.label).join(' · ');
+  }
+}
+
+function initBoardNav(){
+  $('board-prev')?.addEventListener('click',()=>setColPage(S.boardPage-1));
+  $('board-next')?.addEventListener('click',()=>setColPage(S.boardPage+1));
+}
+
+/* Carrega todo histórico (botão "Clique aqui para carregar histórico") */
+async function loadFullHistory(convId){
+  const btn=$('load-history-btn');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Carregando histórico...';}
+  while(S.msgHasMore[convId]&&String(S.activeId)===String(convId)){
+    await loadMoreMsgs(convId);
+  }
+  if(String(S.activeId)===String(convId)){
+    const lhw=$('load-history-wrap');
+    if(lhw)lhw.classList.remove('visible');
+  }
+}
 
 /* Fingerprint do card — fillCard só roda quando algo muda de verdade */
 function cardSnap(conv){
@@ -533,12 +592,22 @@ async function openChat(convId){
   clearInterval(S.msgTimer);
   initMsgScroll(convId);
 
+  /* Reseta botão de histórico */
+  const lhw=$('load-history-wrap');
+  const lhb=$('load-history-btn');
+  if(lhw)lhw.classList.remove('visible');
+  if(lhb){lhb.disabled=false;lhb.textContent='📜 Clique aqui para carregar histórico completo';}
+
   const cached=S.msgCache[convId];
   if(cached && cached.length>0){
     /* Cache existente: mostra instantaneamente, sincroniza em segundo plano */
     $('messages-area').innerHTML='';
     renderMsgs(cached);
-    loadMsgs(convId); /* sem await — não bloqueia a UI */
+    if(S.msgHasMore[convId]&&lhw)lhw.classList.add('visible');
+    loadMsgs(convId).then(()=>{
+      if(String(S.activeId)===String(convId)&&lhw)
+        S.msgHasMore[convId]?lhw.classList.add('visible'):lhw.classList.remove('visible');
+    });
   } else {
     /* Sem cache: skeleton animado enquanto carrega */
     $('messages-area').innerHTML=`
@@ -551,6 +620,8 @@ async function openChat(convId){
         <div class="msg-skel out" style="width:45%"></div>
       </div>`;
     await loadMsgs(convId);
+    if(String(S.activeId)===String(convId)&&lhw)
+      S.msgHasMore[convId]?lhw.classList.add('visible'):lhw.classList.remove('visible');
   }
   S.msgTimer=setInterval(()=>loadMsgs(convId),2000);
 }
@@ -1435,6 +1506,11 @@ function bindEvents(){
     e.stopPropagation(); // evita conflito com data-panel
     openConfig();
   });
+
+  /* Histórico completo de mensagens */
+  $('load-history-btn')?.addEventListener('click',()=>{
+    if(S.activeId)loadFullHistory(S.activeId);
+  });
 }
 
 /* ════════════════════════════════════════════════
@@ -1447,6 +1523,10 @@ function initFunnelFilter(){
       btn.classList.add('active');
       S.funnelFilter=btn.dataset.funnel;
       renderBoard();
+      /* Navega para a página que contém a coluna do filtro selecionado */
+      const ff=btn.dataset.funnel;
+      if(ff==='all'||ff==='unassigned') setColPage(0);
+      else setColPage(pageOfCol(ff));
     });
   });
 }

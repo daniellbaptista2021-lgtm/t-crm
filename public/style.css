@@ -378,16 +378,44 @@ body {
 ───────────────────────────────────────────────── */
 #board-wrap { flex: 1; overflow: hidden; display: flex; position: relative; }
 
-#board {
-  display: flex; gap: 11px; padding: 14px 16px; overflow-x: auto;
-  flex: 1; height: 100%; align-items: flex-start; scroll-behavior: smooth;
-  transition: flex .3s ease;
+/* Área do kanban (esquerda do split) */
+#board-column-area {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; position: relative;
 }
-#board::-webkit-scrollbar { height: 5px; }
-#board::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* Column */
-.col { flex: 0 0 252px; width: 252px; background: var(--col-bg); border-radius: 13px; display: flex; flex-direction: column; max-height: calc(100dvh - 62px); }
+/* Barra de navegação de colunas */
+#board-nav-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px 4px; flex-shrink: 0; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.board-nav-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: all .13s;
+}
+.board-nav-btn:hover:not(:disabled) { background: var(--bg); color: var(--text-1); border-color: #2563eb; }
+.board-nav-btn:disabled { opacity: .3; cursor: default; }
+#board-page-dots { display: flex; gap: 5px; align-items: center; }
+.bpd {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+  border: none; cursor: pointer; padding: 0; transition: background .15s, transform .15s;
+}
+.bpd.active { background: #2563eb; transform: scale(1.3); cursor: default; }
+#board-page-label {
+  flex: 1; font-size: 11px; color: var(--text-3); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+#board {
+  display: flex; gap: 11px; padding: 10px 16px 14px;
+  overflow: hidden; flex: 1; min-height: 0;
+  align-items: flex-start;
+}
+
+/* Column — flex: 1 preenche os 3 slots igualmente */
+.col { flex: 1 1 0; min-width: 200px; max-width: 360px; background: var(--col-bg); border-radius: 13px; display: flex; flex-direction: column; max-height: calc(100dvh - 110px); }
 .col.drag-over { outline: 2px dashed var(--col-color,#2563eb); outline-offset: -2px; }
 .col-head { padding: 10px 12px; border-radius: 13px 13px 0 0; display: flex; align-items: center; gap: 7px; flex-shrink: 0; overflow: hidden; position: relative; }
 .col-head::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,.16) 0%, transparent 55%); pointer-events: none; }
@@ -475,6 +503,20 @@ body {
 
 /* stage-mover removido — arrastamento via kanban */
 #stage-mover { display: none; }
+
+/* Load history button */
+#load-history-wrap {
+  display: none; flex-shrink: 0; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+#load-history-btn {
+  width: 100%; padding: 7px 12px; border-radius: 8px; border: 1px dashed var(--border);
+  background: var(--surface); color: var(--text-3); font-size: 12px; font-family: 'DM Sans',sans-serif;
+  cursor: pointer; transition: all .14s; text-align: center;
+}
+#load-history-btn:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; background: var(--bg); }
+#load-history-btn:disabled { opacity: .5; cursor: default; }
+#load-history-wrap.visible { display: block; }
 
 #messages-area { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 7px; background: var(--bg); scroll-behavior: smooth; }
 #messages-area::-webkit-scrollbar { width: 3px; }
