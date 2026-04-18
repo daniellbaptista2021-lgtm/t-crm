@@ -307,9 +307,9 @@ async function bootApp(){
   S.boardTimer=setInterval(()=>loadConvs(false),5000);
   updateScheduleBadge();
   initScheduleWorker();
-  /* Auto-abre a primeira conversa de Lead */
-  const firstLead=S.convs.find(c=>colOf(c)?.id==='lead');
-  if(firstLead)setTimeout(()=>openChat(firstLead.id),120);
+  /* Auto-abre a conversa de Lead mais recente */
+  const leads=S.convs.filter(c=>colOf(c)?.id==='lead').sort((a,b)=>(b.last_activity_at||0)-(a.last_activity_at||0));
+  if(leads[0])setTimeout(()=>openChat(leads[0].id),120);
 }
 
 async function loadSchedules(){
@@ -550,8 +550,6 @@ function mkCard(conv,col){
 
 function fillCard(card,conv,col){
   const name=conv.meta?.sender?.name||'Sem nome';
-  const ph=phone(conv)||'—';
-  const agent=conv.meta?.assignee?.name||'Sem atribuição';
   const unread=conv.unread_count||0;
   const lastTs=conv.last_activity_at||conv.created_at;
   const preview=conv.last_non_activity_message?.content||(conv.last_non_activity_message?.attachments?.length?'📎 Anexo':'—');
@@ -560,24 +558,21 @@ function fillCard(card,conv,col){
   card.style.setProperty('--card-color',col.color);
   card.classList.toggle('active',String(conv.id)===String(S.activeId));
 
-  // Mostrar badge de agendamento se existir
   const sched = getScheduleForConv(conv.id);
   const schedTag = sched ? `<div class="card-sched-tag" title="Agendado: ${sched.date} ${sched.time}">📅 ${sched.time}</div>` : '';
 
   card.innerHTML=`
-    <div class="card-top">
+    <div class="card-row">
       <div class="card-av" style="background:${c}">${avSrc?`<img src="${avSrc}" loading="lazy" alt="">`:ini(name)}</div>
-      <div class="card-meta">
-        <div class="card-name">${esc(name)}</div>
-        <div class="card-phone">📞 ${esc(ph)}</div>
+      <div class="card-body">
+        <div class="card-hd">
+          <span class="card-name">${esc(name)}</span>
+          <span class="card-time">${fmtT(lastTs)}</span>
+          ${unread>0?`<span class="card-unread">${unread}</span>`:''}
+        </div>
+        <div class="card-preview">${esc(preview)}</div>
+        ${schedTag}
       </div>
-      ${unread>0?`<div class="card-unread">${unread}</div>`:''}
-    </div>
-    <div class="card-preview">${esc(preview)}</div>
-    ${schedTag}
-    <div class="card-foot">
-      <span class="card-agent">${esc(agent)}</span>
-      <span class="card-time">${fmtT(lastTs)}</span>
     </div>`;
 }
 
@@ -632,24 +627,12 @@ async function openChat(convId){
   clearInterval(S.msgTimer);
   initMsgScroll(convId);
 
-  /* Reseta botão de histórico */
-  const lhw=$('load-history-wrap');
-  const lhb=$('load-history-btn');
-  if(lhw)lhw.classList.remove('visible');
-  if(lhb){lhb.disabled=false;lhb.textContent='📜 Clique aqui para carregar histórico completo';}
-
   const cached=S.msgCache[convId];
   if(cached && cached.length>0){
-    /* Cache existente: mostra instantaneamente, sincroniza em segundo plano */
     $('messages-area').innerHTML='';
     renderMsgs(cached);
-    if(S.msgHasMore[convId]&&lhw)lhw.classList.add('visible');
-    loadMsgs(convId).then(()=>{
-      if(String(S.activeId)===String(convId)&&lhw)
-        S.msgHasMore[convId]?lhw.classList.add('visible'):lhw.classList.remove('visible');
-    });
+    loadMsgs(convId);
   } else {
-    /* Sem cache: skeleton animado enquanto carrega */
     $('messages-area').innerHTML=`
       <div class="msg-skel-wrap">
         <div class="msg-skel in" style="width:65%"></div>
@@ -660,8 +643,6 @@ async function openChat(convId){
         <div class="msg-skel out" style="width:45%"></div>
       </div>`;
     await loadMsgs(convId);
-    if(String(S.activeId)===String(convId)&&lhw)
-      S.msgHasMore[convId]?lhw.classList.add('visible'):lhw.classList.remove('visible');
   }
   S.msgTimer=setInterval(()=>loadMsgs(convId),2000);
 }

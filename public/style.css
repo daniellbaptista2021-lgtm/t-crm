@@ -428,39 +428,52 @@ body {
 .col-empty { text-align: center; padding: 24px 10px; color: var(--text-4); font-size: 12px; line-height: 1.7; }
 .col-empty-icon { font-size: 24px; margin-bottom: 5px; opacity: .5; }
 
-/* Card */
-.card { background: var(--card-bg); border-radius: 10px; padding: 10px 12px; cursor: pointer; box-shadow: var(--shadow-sm); border: 1.5px solid transparent; transition: box-shadow .17s, border-color .17s, transform .17s; position: relative; user-select: none; overflow: hidden; min-height: 100px; max-height: 120px; contain: layout style paint; }
+/* Card — layout compacto horizontal */
+.card { background: var(--card-bg); border-radius: 9px; padding: 8px 10px; cursor: pointer; box-shadow: var(--shadow-sm); border: 1.5px solid transparent; transition: box-shadow .17s, border-color .17s, transform .17s; position: relative; user-select: none; overflow: hidden; contain: layout style paint; }
 .card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--card-color,#2563eb); border-radius: 3px 0 0 3px; opacity: 0; transition: opacity .15s; }
 .card:hover { box-shadow: var(--shadow-md); border-color: var(--border); transform: translateY(-1px); }
 .card:hover::before { opacity: 1; }
 .card.active { border-color: var(--card-color,#2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.14), var(--shadow-md); }
 .card.dragging { opacity: .4; transform: scale(.95) rotate(.8deg); }
 
-.card-top  { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 7px; }
-.card-av   { width: 35px; height: 35px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12.5px; color: #fff; overflow: hidden; }
+/* Card internals */
+.card-row    { display: flex; align-items: center; gap: 9px; }
+.card-av     { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #fff; overflow: hidden; }
 .card-av img { width: 100%; height: 100%; object-fit: cover; }
-.card-meta { flex: 1; min-width: 0; }
-.card-name  { font-size: 13px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-phone { font-size: 11px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-unread { min-width: 18px; height: 18px; background: #16a34a; color: #fff; font-size: 10px; font-weight: 700; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 4px; flex-shrink: 0; font-family: 'Space Grotesk',sans-serif; animation: unread-pulse 2.5s infinite; }
+.card-body   { flex: 1; min-width: 0; }
+.card-hd     { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+.card-name   { font-size: 12.5px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.card-time   { font-size: 10px; color: var(--text-4); white-space: nowrap; flex-shrink: 0; }
+.card-unread { min-width: 16px; height: 16px; background: #16a34a; color: #fff; font-size: 9px; font-weight: 700; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 3px; flex-shrink: 0; font-family: 'Space Grotesk',sans-serif; animation: unread-pulse 2.5s infinite; }
 @keyframes unread-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.35)}50%{box-shadow:0 0 0 5px rgba(22,163,74,0)} }
-.card-preview { font-size: 12px; color: var(--text-3); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin-bottom: 8px; min-height: 34px; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.card-agent { font-size: 10.5px; font-weight: 600; color: #fff; background: var(--card-color,#2563eb); padding: 2px 8px; border-radius: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
-.card-time  { font-size: 10.5px; color: var(--text-4); white-space: nowrap; }
+.card-preview { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ─────────────────────────────────────────────────
    CHAT PANEL — 50% push no desktop
 ───────────────────────────────────────────────── */
 #chat-panel {
-  width: 0; min-width: 0; background: var(--surface);
+  width: 44%; min-width: 300px; background: var(--surface);
   border-left: 1px solid var(--border); display: flex; flex-direction: column;
-  overflow: hidden;
-  transition: width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1);
-  flex-shrink: 0; position: relative; z-index: 100;
-  box-shadow: -6px 0 24px rgba(0,0,0,.06);
+  overflow: hidden; flex-shrink: 0; position: relative; z-index: 100;
+  box-shadow: -4px 0 20px rgba(0,0,0,.05);
 }
-#chat-panel.open { width: 50%; min-width: 340px; }
+/* Hide content when no conversation is open */
+#chat-panel:not(.open) #chat-head,
+#chat-panel:not(.open) #load-history-wrap,
+#chat-panel:not(.open) #messages-area,
+#chat-panel:not(.open) #rec-ui,
+#chat-panel:not(.open) #chat-input-area { display: none; }
+
+/* Placeholder when panel is empty */
+#chat-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; color: var(--text-4);
+  text-align: center; padding: 20px; user-select: none;
+}
+.ce-icon { font-size: 40px; opacity: .2; line-height: 1; }
+.ce-text  { font-size: 13px; font-weight: 500; }
+.ce-sub   { font-size: 11.5px; opacity: .7; }
+#chat-panel.open #chat-empty { display: none; }
 
 /* Chat head */
 #chat-head { padding: 11px 13px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
@@ -966,7 +979,6 @@ body.dark .sched-row.today { background: #292200; }
 @media (max-width: 1024px) {
   .dash-kpi-row    { grid-template-columns: repeat(2, 1fr); }
   .dash-charts-row { grid-template-columns: 1fr; }
-  #chat-panel.open { width: 55%; }
 }
 
 @media (max-width: 768px) {
