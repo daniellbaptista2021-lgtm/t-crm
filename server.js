@@ -95,15 +95,35 @@ app.use(express.static(path.join(__dirname, 'public'), {
 async function cw(urlPath, options = {}) {
   const sep = urlPath.includes('?') ? '&' : '?';
   const url = `${BASE}${urlPath}${sep}api_access_token=${encodeURIComponent(CHATWOOT_TOKEN)}`;
+  const timeoutMs = options.timeoutMs || 15000;
 
-  const res = await fetcher(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': CHATWOOT_TOKEN,
-      ...(options.headers || {}),
-    },
-  });
+  const doFetch = async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetcher(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'api_access_token': CHATWOOT_TOKEN,
+          ...(options.headers || {}),
+        },
+        signal: ctrl.signal,
+      });
+    } finally { clearTimeout(timer); }
+  };
+
+  let res;
+  try { res = await doFetch(); }
+  catch (err) {
+    /* Retry uma vez em caso de falha de rede/abort — Chatwoot costuma ter blips */
+    if (err.name === 'AbortError' || /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND/i.test(err.message || '')) {
+      await new Promise(r => setTimeout(r, 500));
+      res = await doFetch();
+    } else {
+      throw err;
+    }
+  }
 
   if (!res.ok) {
     const txt = await res.text();
@@ -546,8 +566,10 @@ app.get('/dashboard', auth, async (req, res) => {
 ═══════════════════════════════════════════════════ */
 app.get('/health', async (req, res) => {
   try {
-    await cw('/profile');
-    res.json({ ok: true, chatwoot: CHATWOOT_URL, account: ACCOUNT_ID });
+    /* /agents é um endpoint account-scoped que sempre existe se o token for válido */
+    const list = await cw('/agents', { timeoutMs: 8000 });
+    const agents = Array.isArray(list) ? list.length : (list?.payload?.length || 0);
+    res.json({ ok: true, chatwoot: CHATWOOT_URL, account: ACCOUNT_ID, agents });
   } catch (err) {
     res.status(503).json({ ok: false, error: err.message, chatwoot: CHATWOOT_URL });
   }

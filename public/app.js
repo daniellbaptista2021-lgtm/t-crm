@@ -363,6 +363,7 @@ async function loadConvs(showLoader=false){
     S.lastUpdateTime=Date.now();
     const tot=$('tb-total');if(tot)tot.textContent=`${S.convs.length} conv.`;
     updateFunnelCounts();
+    const dot=$('conn-dot');if(dot)dot.classList.remove('err');
   }catch(err){
     if(showLoader)toast('Erro ao carregar conversas: '+err.message,'err');
     const dot=$('conn-dot');if(dot)dot.classList.add('err');
