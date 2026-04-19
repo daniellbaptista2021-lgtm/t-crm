@@ -96,32 +96,41 @@ async function cw(urlPath, options = {}) {
   const sep = urlPath.includes('?') ? '&' : '?';
   const url = `${BASE}${urlPath}${sep}api_access_token=${encodeURIComponent(CHATWOOT_TOKEN)}`;
 
-  const res = await fetcher(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'api_access_token': CHATWOOT_TOKEN,
-      ...(options.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
 
-  if (!res.ok) {
+  try {
+    const res = await fetcher(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'api_access_token': CHATWOOT_TOKEN,
+        ...(options.headers || {}),
+      },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Chatwoot ${res.status}: ${txt}`);
+    }
     const txt = await res.text();
-    throw new Error(`Chatwoot ${res.status}: ${txt}`);
+    return txt ? JSON.parse(txt) : {};
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
   }
-  const txt = await res.text();
-  return txt ? JSON.parse(txt) : {};
 }
 
-/* Cache em memória para conversas — TTL 8s */
+/* Cache em memória para conversas — TTL 30s normal, 5min em fallback */
 const convsCache = {};
 
-/* Cache de agentes por email — TTL 60s */
+/* Cache de agentes por email — TTL 5min */
 let _agentEmailCache = null;
 let _agentEmailCacheTs = 0;
 async function getAgentIdByEmail(email) {
   const now = Date.now();
-  if (!_agentEmailCache || now - _agentEmailCacheTs > 60000) {
+  if (!_agentEmailCache || now - _agentEmailCacheTs > 300000) {
     try {
       const list = await cw('/agents');
       const agents = Array.isArray(list) ? list : (list?.payload || []);
@@ -132,33 +141,39 @@ async function getAgentIdByEmail(email) {
   return _agentEmailCache[email] || null;
 }
 
-/* Busca todas as conversas com paginação paralela + cache */
+/* Busca todas as conversas com paginação paralela + cache com fallback */
 async function fetchAllConvs(assigneeId) {
   const cacheKey = assigneeId || '__all__';
   const now = Date.now();
-  if (convsCache[cacheKey] && now - convsCache[cacheKey].ts < 8000) {
-    return convsCache[cacheKey].data;
-  }
-  let all = [], page = 1;
-  while (page <= 10) {
-    const chunk = Math.min(4, 11 - page);
-    const results = await Promise.all(
-      Array.from({ length: chunk }, (_, i) => page + i)
-        .map(p => cw(`/conversations?page=${p}&sort=last_activity_at`).catch(() => null))
-    );
-    let done = false;
-    for (const data of results) {
-      if (!data) { done = true; break; }
-      const batch = data?.data?.payload || [];
-      all = all.concat(batch);
-      if (batch.length < 25) { done = true; break; }
+  const cached = convsCache[cacheKey];
+  /* Serve cache fresco (<30s) imediatamente */
+  if (cached && now - cached.ts < 30000) return cached.data;
+  try {
+    let all = [], page = 1;
+    while (page <= 10) {
+      const chunk = Math.min(4, 11 - page);
+      const results = await Promise.all(
+        Array.from({ length: chunk }, (_, i) => page + i)
+          .map(p => cw(`/conversations?page=${p}&sort=last_activity_at`).catch(() => null))
+      );
+      let done = false;
+      for (const data of results) {
+        if (!data) { done = true; break; }
+        const batch = data?.data?.payload || [];
+        all = all.concat(batch);
+        if (batch.length < 25) { done = true; break; }
+      }
+      if (done) break;
+      page += chunk;
     }
-    if (done) break;
-    page += chunk;
+    if (assigneeId) all = all.filter(c => String(c?.meta?.assignee?.id) === String(assigneeId));
+    convsCache[cacheKey] = { data: all, ts: now };
+    return all;
+  } catch (err) {
+    /* Chatwoot lento/fora: retorna cache antigo se existir */
+    if (cached) return cached.data;
+    throw err;
   }
-  if (assigneeId) all = all.filter(c => String(c?.meta?.assignee?.id) === String(assigneeId));
-  convsCache[cacheKey] = { data: all, ts: now };
-  return all;
 }
 
 /* ═══════════════════════════════════════════════════
