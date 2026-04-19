@@ -113,7 +113,7 @@ async function cw(urlPath, options = {}) {
   return txt ? JSON.parse(txt) : {};
 }
 
-/* Cache em memória para conversas — TTL 8s */
+/* Cache em memória para conversas — TTL 60s */
 const convsCache = {};
 
 /* Cache de agentes por email — TTL 60s */
@@ -136,12 +136,12 @@ async function getAgentIdByEmail(email) {
 async function fetchAllConvs(assigneeId) {
   const cacheKey = assigneeId || '__all__';
   const now = Date.now();
-  if (convsCache[cacheKey] && now - convsCache[cacheKey].ts < 8000) {
+  if (convsCache[cacheKey] && now - convsCache[cacheKey].ts < 60000) {
     return convsCache[cacheKey].data;
   }
   let all = [], page = 1;
   while (page <= 10) {
-    const chunk = Math.min(4, 11 - page);
+    const chunk = Math.min(2, 11 - page);
     const results = await Promise.all(
       Array.from({ length: chunk }, (_, i) => page + i)
         .map(p => cw(`/conversations?page=${p}&sort=last_activity_at`).catch(() => null))

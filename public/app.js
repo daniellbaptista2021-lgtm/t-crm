@@ -267,7 +267,7 @@ async function bootApp(){
   await Promise.all([loadAgents(),loadLabels(),loadSchedules()]);
   await loadConvs(true);
   clearInterval(S.boardTimer);
-  S.boardTimer=setInterval(()=>loadConvs(false),5000);
+  S.boardTimer=setInterval(()=>loadConvs(false),30000);
   updateScheduleBadge();
   initScheduleWorker();
   /* Auto-abre a primeira conversa de Lead */
@@ -623,7 +623,7 @@ async function openChat(convId){
     if(String(S.activeId)===String(convId)&&lhw)
       S.msgHasMore[convId]?lhw.classList.add('visible'):lhw.classList.remove('visible');
   }
-  S.msgTimer=setInterval(()=>loadMsgs(convId),2000);
+  S.msgTimer=setInterval(()=>loadMsgs(convId),15000);
 }
 
 function refreshStageBtns(conv){
