@@ -690,7 +690,6 @@ async function loadMsgs(convId){
     const fresh=d?.payload||[];
     if(!fresh.length)return;
     const cached=S.msgCache[convId]||[];
-    if(cached.some(m=>String(m.id).startsWith('temp_')))return;
 
     /* Rastrear ID mais antigo para paginação (configura apenas uma vez) */
     if(!S.msgOldestId[convId]){
@@ -699,15 +698,29 @@ async function loadMsgs(convId){
       S.msgHasMore[convId]=fresh.length>=20;
     }
 
-    /* Merge: preserva msgs antigas já carregadas + atualiza com as novas */
     const freshIds=new Set(fresh.map(m=>String(m.id)));
-    const older=cached.filter(m=>!freshIds.has(String(m.id))&&!String(m.id).startsWith('temp_'));
-    const merged=[...older,...fresh].sort((a,b)=>a.created_at-b.created_at);
+    /* Conteúdos outgoing já confirmados pelo servidor — usado para descartar temps já gravados */
+    const freshOutContent=new Set(
+      fresh
+        .filter(m=>m.message_type===1||m.message_type==='outgoing')
+        .map(m=>(m.content||'').trim())
+    );
+    /* Temps em trânsito (ainda não retornaram do servidor) — preserva até confirmar */
+    const pendingTemps=cached.filter(m=>
+      String(m.id).startsWith('temp_') &&
+      !freshOutContent.has((m.content||'').trim())
+    );
 
-    /* Só re-renderiza se houve mudança real */
-    const lastFresh=fresh[fresh.length-1]?.id;
-    const lastCached=cached.filter(m=>!String(m.id).startsWith('temp_')).pop()?.id;
-    if(lastFresh===lastCached && merged.length===cached.length)return;
+    /* Merge: msgs antigas já carregadas + novas do servidor + temps ainda em trânsito */
+    const older=cached.filter(m=>!freshIds.has(String(m.id))&&!String(m.id).startsWith('temp_'));
+    const merged=[...older,...fresh,...pendingTemps].sort((a,b)=>a.created_at-b.created_at);
+
+    /* Só re-renderiza se houve mudança real — compara o maior ID confirmado */
+    const newestFresh=fresh.reduce((m,x)=>Math.max(m,Number(x.id)||0),0);
+    const newestCached=cached
+      .filter(m=>!String(m.id).startsWith('temp_'))
+      .reduce((m,x)=>Math.max(m,Number(x.id)||0),0);
+    if(newestFresh===newestCached && merged.length===cached.length)return;
 
     S.msgCache[convId]=merged;
     if(String(S.activeId)===String(convId))renderMsgs(merged);
